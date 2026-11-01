@@ -57,20 +57,17 @@ from unittest.mock import patch
 
 @pytest.mark.asyncio
 async def test_scan_success(client: AsyncClient):
-    """Test scan endpoint returns success for Day 3."""
-    with patch("backend.api.routes.capture_screenshots") as mock_capture:
-        with patch("backend.api.routes.analyze_screenshot") as mock_analyze:
-            mock_capture.return_value = {"desktop": "/tmp/test.png"}
-            mock_analyze.return_value = {
-                "status": "success",
-                "bugs": [{"id": "1", "title": "Test bug"}]
-            }
-            response = await client.post("/api/v1/scan")
-            assert response.status_code == 200
-            data = response.json()
-            assert data["status"] == "success"
-            assert "screenshots" in data
-            assert data["total_bugs"] == 1
+    """Test scan endpoint returns accepted status and run_id."""
+    with patch("backend.api.routes.run_scan_background_task"):
+        response = await client.post(
+            "/api/v1/scan",
+            json={"url": "http://localhost:8000/mock-app/index.html", "auto_fix": True}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "run_id" in data
+        assert data["url"] == "http://localhost:8000/mock-app/index.html"
 
 
 @pytest.mark.asyncio
@@ -81,3 +78,30 @@ async def test_list_runs_empty(client: AsyncClient):
     data = response.json()
     assert isinstance(data["runs"], list)
     assert isinstance(data["total"], int)
+
+
+@pytest.mark.asyncio
+async def test_stop_scan_endpoints(client: AsyncClient):
+    """Test stopping an active scan by run_id and stopping all active scans."""
+    with patch("backend.api.routes.run_scan_background_task"):
+        # 1. Trigger a scan
+        scan_res = await client.post(
+            "/api/v1/scan",
+            json={"url": "http://localhost:8000/mock-app/index.html"}
+        )
+        assert scan_res.status_code == 200
+        run_id = scan_res.json()["run_id"]
+
+        # 2. Stop this scan
+        stop_res = await client.post(f"/api/v1/scan/{run_id}/stop")
+        assert stop_res.status_code == 200
+        stop_data = stop_res.json()
+        assert stop_data["status"] == "success"
+        assert stop_data["run_id"] == run_id
+
+        # 3. Stop all scans
+        stop_all_res = await client.post("/api/v1/scan/stop")
+        assert stop_all_res.status_code == 200
+        stop_all_data = stop_all_res.json()
+        assert stop_all_data["status"] == "success"
+        assert "stopped_run_ids" in stop_all_data

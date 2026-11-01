@@ -19,10 +19,49 @@ from fastapi.responses import FileResponse
 from backend.db.database import get_db_session, async_session_factory
 from backend.models.models import ScanRunModel, BugModel
 from pydantic import BaseModel
-from backend.models.schemas import ScanResult, BugReport, ScanStatus, ScanRequest, GitHubConnectRequest
+from backend.models.schemas import (
+    ScanResult,
+    BugReport,
+    ScanStatus,
+    ScanRequest,
+    GitHubConnectRequest,
+    SettingsUpdateRequest,
+)
 from backend.services.vlm.analyzer import analyze_screenshot, crop_element_region
 
 router = APIRouter(prefix="/api/v1", tags=["omnisight"])
+
+
+AVAILABLE_VLM_MODELS = [
+    {
+        "id": "gemini-2.5-flash",
+        "name": "Google Gemini 2.5 Flash",
+        "description": "Ultra-fast multimodal vision with sub-second token latency.",
+        "badge": "Fastest (Sub-10s)",
+        "cost": "$ / Low Cost"
+    },
+    {
+        "id": "gemini-3.8-flash",
+        "name": "Google Gemini 3.8 Flash (High)",
+        "description": "State-of-the-art vision reasoning with enhanced spatial accuracy.",
+        "badge": "Recommended",
+        "cost": "$$ / High Accuracy"
+    },
+    {
+        "id": "gemini-1.5-pro",
+        "name": "Google Gemini 1.5 Pro",
+        "description": "Deep multi-turn visual critique and complex layout repair.",
+        "badge": "Deep Reasoning",
+        "cost": "$$$ / Heavy Token"
+    },
+    {
+        "id": "gpt-4o",
+        "name": "OpenAI GPT-4o Vision",
+        "description": "Multi-provider high precision layout and visual defect detection.",
+        "badge": "Alternative VLM",
+        "cost": "$$$ / External"
+    }
+]
 
 
 @router.get("/status", summary="System status")
@@ -41,11 +80,56 @@ async def system_status() -> dict[str, Any]:
     }
 
 
+@router.get("/settings", summary="Get system settings")
+async def get_system_settings() -> dict[str, Any]:
+    """Retrieve current system configuration, credentials state, and VLM models."""
+    settings = get_settings()
+    raw_key = settings.gemini_api_key or ""
+    masked_key = f"{raw_key[:4]}...{raw_key[-4:]}" if len(raw_key) > 8 else ("Configured" if raw_key else "")
+    return {
+        "gemini_configured": settings.is_gemini_configured,
+        "gemini_model": settings.gemini_model or "gemini-3.8-flash",
+        "gemini_key_masked": masked_key,
+        "github_configured": settings.is_github_configured,
+        "github_repo": settings.github_repo or "",
+        "staging_url": settings.staging_url or "http://localhost:8000/mock-app/index.html",
+        "available_models": AVAILABLE_VLM_MODELS,
+    }
+
+
+@router.post("/settings", summary="Update system settings")
+async def update_system_settings(req: SettingsUpdateRequest) -> dict[str, Any]:
+    """Update runtime credentials, target repository, and active VLM model."""
+    settings = get_settings()
+    settings.update_settings(
+        gemini_api_key=req.gemini_api_key,
+        gemini_model=req.gemini_model,
+        github_token=req.github_token,
+        github_repo=req.github_repo,
+        staging_url=req.staging_url,
+    )
+    raw_key = settings.gemini_api_key or ""
+    masked_key = f"{raw_key[:4]}...{raw_key[-4:]}" if len(raw_key) > 8 else ("Configured" if raw_key else "")
+    return {
+        "status": "success",
+        "message": "Settings updated and persisted successfully.",
+        "gemini_configured": settings.is_gemini_configured,
+        "gemini_model": settings.gemini_model,
+        "gemini_key_masked": masked_key,
+        "github_configured": settings.is_github_configured,
+        "github_repo": settings.github_repo,
+        "staging_url": settings.staging_url,
+    }
+
+
 from backend.core.config import get_settings
 from backend.services.browser.automation import capture_screenshots
 
 # In-memory stage tracker so frontend syncs with actual backend progress
 SCAN_STAGES: dict[str, str] = {}
+# Active asyncio tasks mapping: run_id -> asyncio.Task for immediate cancellation
+ACTIVE_SCAN_TASKS: dict[str, asyncio.Task] = {}
+CANCELLED_RUNS: set[str] = set()
 
 async def run_scan_background_task(run_id: str, target_url: str, prompt: Optional[str] = None, create_pr: bool = True):
     """Background task to run the complete scan — optimized for < 30s total."""
@@ -55,12 +139,18 @@ async def run_scan_background_task(run_id: str, target_url: str, prompt: Optiona
     logger = logging.getLogger(__name__)
 
     try:
+        if run_id in CANCELLED_RUNS:
+            raise asyncio.CancelledError()
+
         # 1. Capture screenshots across all viewports (parallel in Playwright)
         SCAN_STAGES[run_id] = "Capturing Screenshots..."
         screenshots, source_code = await capture_screenshots(
             url=target_url,
             headless=settings.browser_headless
         )
+
+        if run_id in CANCELLED_RUNS:
+            raise asyncio.CancelledError()
 
         async with async_session_factory() as db:
             run_res = await db.execute(select(ScanRunModel).where(ScanRunModel.id == run_id))
@@ -73,6 +163,9 @@ async def run_scan_background_task(run_id: str, target_url: str, prompt: Optiona
                 SCAN_STAGES[run_id] = "Scan Failed: Screenshots unavailable"
                 return
 
+            if run_id in CANCELLED_RUNS:
+                raise asyncio.CancelledError()
+
             # 2. ONE unified VLM call — all viewports analyzed in a single multimodal prompt with pre-loaded directives
             SCAN_STAGES[run_id] = "Analyzing with VLM..."
             from backend.services.vlm.analyzer import analyze_all_viewports
@@ -82,6 +175,9 @@ async def run_scan_background_task(run_id: str, target_url: str, prompt: Optiona
                 page_source=source_code,
                 user_prompt=prompt,
             )
+
+            if run_id in CANCELLED_RUNS:
+                raise asyncio.CancelledError()
 
             all_bugs = []
             db_bugs = []
@@ -179,6 +275,19 @@ async def run_scan_background_task(run_id: str, target_url: str, prompt: Optiona
             await db.commit()
             SCAN_STAGES[run_id] = "Completed"
             logger.info("⚡ Full scan and ZIP generation completed in %.2fs with %d bugs reported!", duration, len(all_bugs))
+    except asyncio.CancelledError:
+        logger.info("🛑 Scan %s cancelled by user request.", run_id)
+        SCAN_STAGES[run_id] = "Scan Stopped by User"
+        try:
+            async with async_session_factory() as db:
+                run_res = await db.execute(select(ScanRunModel).where(ScanRunModel.id == run_id))
+                run_model = run_res.scalars().first()
+                if run_model and run_model.status == ScanStatus.RUNNING:
+                    run_model.status = ScanStatus.FAILED
+                    run_model.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
+        except Exception as db_err:
+            logger.warning("Error marking cancelled scan in db: %s", db_err)
     except Exception as e:
         logger.error(f"Background task failed: {e}")
         SCAN_STAGES[run_id] = "Failed"
@@ -188,6 +297,9 @@ async def run_scan_background_task(run_id: str, target_url: str, prompt: Optiona
             if run_model:
                 run_model.status = ScanStatus.FAILED
                 await db.commit()
+    finally:
+        ACTIVE_SCAN_TASKS.pop(run_id, None)
+        CANCELLED_RUNS.discard(run_id)
 
 @router.post("/scan", summary="Trigger UI scan")
 async def trigger_scan(
@@ -214,20 +326,80 @@ async def trigger_scan(
     db.add(run_model)
     await db.commit()
     
-    # Queue the background task with optional custom prompt and auto PR creation
-    background_tasks.add_task(
-        run_scan_background_task,
-        run_id,
-        target_url,
-        req.prompt,
-        req.create_pr if req.create_pr is not None else True
+    # Launch async task with handle retained in ACTIVE_SCAN_TASKS for instant abort capability
+    task = asyncio.create_task(
+        run_scan_background_task(
+            run_id,
+            target_url,
+            req.prompt,
+            req.create_pr if req.create_pr is not None else True
+        )
     )
+    ACTIVE_SCAN_TASKS[run_id] = task
     
     return {
         "status": "accepted",
         "message": "Scan started in the background.",
         "url": target_url,
         "run_id": run_id
+    }
+
+
+@router.post("/scan/{run_id}/stop", summary="Stop a specific active scan")
+@router.post("/runs/{run_id}/cancel", summary="Cancel a scan run")
+async def stop_scan(run_id: str, db: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    """
+    Immediately stop/cancel an active scan run.
+    Halts browser automation, VLM evaluation, and updates run status to FAILED/Cancelled.
+    """
+    CANCELLED_RUNS.add(run_id)
+    SCAN_STAGES[run_id] = "Scan Stopped by User"
+    
+    task = ACTIVE_SCAN_TASKS.get(run_id)
+    if task and not task.done():
+        task.cancel()
+        
+    result = await db.execute(select(ScanRunModel).where(ScanRunModel.id == run_id))
+    run_model = result.scalars().first()
+    if run_model and run_model.status == ScanStatus.RUNNING:
+        run_model.status = ScanStatus.FAILED
+        run_model.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        
+    return {
+        "status": "success",
+        "message": f"Scan {run_id} stopped successfully.",
+        "run_id": run_id,
+    }
+
+
+@router.post("/scan/stop", summary="Stop all active scans")
+async def stop_all_scans(db: AsyncSession = Depends(get_db_session)) -> dict[str, Any]:
+    """
+    Stop all currently running or pending scans immediately.
+    """
+    stopped = []
+    for r_id, task in list(ACTIVE_SCAN_TASKS.items()):
+        CANCELLED_RUNS.add(r_id)
+        SCAN_STAGES[r_id] = "Scan Stopped by User"
+        if not task.done():
+            task.cancel()
+        stopped.append(r_id)
+        
+    result = await db.execute(select(ScanRunModel).where(ScanRunModel.status == ScanStatus.RUNNING))
+    running_runs = result.scalars().all()
+    for r in running_runs:
+        r.status = ScanStatus.FAILED
+        r.completed_at = datetime.now(timezone.utc)
+        if r.id not in stopped:
+            stopped.append(r.id)
+    if running_runs:
+        await db.commit()
+        
+    return {
+        "status": "success",
+        "message": f"Stopped {len(stopped)} active scan(s).",
+        "stopped_run_ids": stopped,
     }
 
 

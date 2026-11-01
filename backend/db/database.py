@@ -8,6 +8,7 @@ Async SQLAlchemy engine and session factory for SQLite.
 import logging
 from typing import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -66,7 +67,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create all database tables."""
+    """Create all database tables and configure SQLite WAL mode."""
     async with engine.begin() as conn:
+        if "sqlite" in settings.database_url:
+            await conn.execute(text("PRAGMA journal_mode=WAL;"))
+            await conn.execute(text("PRAGMA busy_timeout=15000;"))
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("🗄️  Database tables initialized")
+    logger.info("🗄️  Database tables initialized with SQLite WAL mode")

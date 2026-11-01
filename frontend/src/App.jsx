@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   Play,
+  Square,
+  StopCircle,
   Activity,
   CheckCircle,
   XCircle,
@@ -31,10 +33,280 @@ const API_BASE = typeof window !== "undefined" && (window.location.port === "517
   ? "/api/v1"
   : "http://127.0.0.1:8000/api/v1";
 
+const resolveScreenshotUrl = (rawPath) => {
+  if (!rawPath) return null;
+  if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) return rawPath;
+  const normalized = rawPath.replace(/\\/g, "/");
+  const idx = normalized.indexOf("/output/");
+  if (idx !== -1) {
+    return `http://127.0.0.1:8000${normalized.slice(idx)}`;
+  }
+  if (normalized.startsWith("output/")) {
+    return `http://127.0.0.1:8000/${normalized}`;
+  }
+  return `http://127.0.0.1:8000/${normalized.replace(/^\/+/, "")}`;
+};
+
+// ── Interactive Before/After Visual Diff Slider & Bounding Box Studio (Day 11) ──
+function VisualDiffSlider({ beforeUrl, afterUrl, bug }) {
+  const [sliderPos, setSliderPos] = useState(50);
+  const [viewMode, setViewMode] = useState("slider"); // "slider" | "side-by-side"
+
+  const bbox = bug?.bounding_box;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", width: "100%" }}>
+      {/* View Mode Switcher Pills */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            type="button"
+            onClick={() => setViewMode("slider")}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "6px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              background: viewMode === "slider" ? "var(--accent-primary)" : "rgba(255,255,255,0.06)",
+              color: viewMode === "slider" ? "#ffffff" : "var(--text-muted)",
+              border: "1px solid var(--border-glass)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            Interactive Diff Slider
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("side-by-side")}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "6px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              background: viewMode === "side-by-side" ? "var(--accent-primary)" : "rgba(255,255,255,0.06)",
+              color: viewMode === "side-by-side" ? "#ffffff" : "var(--text-muted)",
+              border: "1px solid var(--border-glass)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            Side-by-Side View
+          </button>
+        </div>
+        {viewMode === "slider" && (
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>
+            Split Position: {sliderPos}%
+          </span>
+        )}
+      </div>
+
+      {viewMode === "slider" ? (
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            aspectRatio: "16/9",
+            borderRadius: "12px",
+            overflow: "hidden",
+            background: "#0a0a0f",
+            userSelect: "none",
+            border: "1px solid var(--border-glass)",
+          }}
+        >
+          {/* Base: Before Screenshot */}
+          {beforeUrl ? (
+            <img
+              src={beforeUrl}
+              alt="Before"
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+              Original Screenshot Unavailable
+            </div>
+          )}
+
+          {/* Bounding Box Highlight Overlay */}
+          {bbox && Array.isArray(bbox) && bbox.length === 4 && (
+            <div
+              style={{
+                position: "absolute",
+                top: `${bbox[0] / 10}%`,
+                left: `${bbox[1] / 10}%`,
+                width: `${Math.max(5, (bbox[3] - bbox[1]) / 10)}%`,
+                height: `${Math.max(5, (bbox[2] - bbox[0]) / 10)}%`,
+                border: "2px solid #ef4444",
+                boxShadow: "0 0 12px rgba(239, 68, 68, 0.9)",
+                pointerEvents: "none",
+                borderRadius: "4px",
+                zIndex: 4,
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: "-20px",
+                  left: "0",
+                  background: "#ef4444",
+                  color: "#ffffff",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  borderRadius: "3px",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                {bug?.category ? bug.category.toUpperCase() : "DEFECT"}
+              </span>
+            </div>
+          )}
+
+          {/* Overlaid After Screenshot with dynamic clip-path */}
+          {afterUrl && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                clipPath: `inset(0 0 0 ${sliderPos}%)`,
+                zIndex: 3,
+              }}
+            >
+              <img
+                src={afterUrl}
+                alt="After"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+          )}
+
+          {/* Interactive divider bar */}
+          {afterUrl && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                bottom: 0,
+                left: `${sliderPos}%`,
+                width: "3px",
+                background: "#ffffff",
+                boxShadow: "0 0 10px rgba(0,0,0,0.8)",
+                zIndex: 10,
+                cursor: "ew-resize",
+                transform: "translateX(-50%)",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: "30px",
+                  height: "30px",
+                  borderRadius: "50%",
+                  background: "var(--accent-primary)",
+                  border: "2px solid #ffffff",
+                  color: "#ffffff",
+                  fontSize: "11px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.6)",
+                }}
+              >
+                ◂▸
+              </div>
+            </div>
+          )}
+
+          {/* Viewport indicators */}
+          <span style={{ position: "absolute", top: "12px", left: "12px", zIndex: 12, background: "rgba(239, 68, 68, 0.85)", color: "#ffffff", padding: "3px 10px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 600 }}>
+            Before Fix (Broken)
+          </span>
+          {afterUrl && (
+            <span style={{ position: "absolute", top: "12px", right: "12px", zIndex: 12, background: "rgba(16, 185, 129, 0.85)", color: "#ffffff", padding: "3px 10px", borderRadius: "12px", fontSize: "0.72rem", fontWeight: 600 }}>
+              After Fix (Remediated)
+            </span>
+          )}
+
+          {/* Transparent Range slider input for mouse/touch scrubbing */}
+          {afterUrl && (
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={sliderPos}
+              onChange={(e) => setSliderPos(Number(e.target.value))}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                opacity: 0,
+                cursor: "ew-resize",
+                zIndex: 20,
+                margin: 0,
+              }}
+            />
+          )}
+        </div>
+      ) : (
+        /* Side-by-Side Dual View */
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <div style={{ position: "relative", borderRadius: "12px", overflow: "hidden", aspectRatio: "16/9", background: "#0a0a0f", border: "1px solid var(--border-glass)" }}>
+            <span style={{ position: "absolute", top: "10px", left: "10px", zIndex: 5, background: "rgba(239, 68, 68, 0.85)", color: "#ffffff", padding: "3px 10px", borderRadius: "10px", fontSize: "0.72rem", fontWeight: 600 }}>
+              Original Defect
+            </span>
+            {beforeUrl ? (
+              <img src={beforeUrl} alt="Before" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "0.8rem" }}>N/A</div>
+            )}
+            {bbox && Array.isArray(bbox) && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: `${bbox[0] / 10}%`,
+                  left: `${bbox[1] / 10}%`,
+                  width: `${Math.max(5, (bbox[3] - bbox[1]) / 10)}%`,
+                  height: `${Math.max(5, (bbox[2] - bbox[0]) / 10)}%`,
+                  border: "2px solid #ef4444",
+                  boxShadow: "0 0 10px rgba(239, 68, 68, 0.9)",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+          </div>
+
+          <div style={{ position: "relative", borderRadius: "12px", overflow: "hidden", aspectRatio: "16/9", background: "#0a0a0f", border: "1px solid var(--border-glass)" }}>
+            <span style={{ position: "absolute", top: "10px", left: "10px", zIndex: 5, background: "rgba(16, 185, 129, 0.85)", color: "#ffffff", padding: "3px 10px", borderRadius: "10px", fontSize: "0.72rem", fontWeight: 600 }}>
+              Verified Fix Applied
+            </span>
+            {afterUrl ? (
+              <img src={afterUrl} alt="After" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: "0.8rem", padding: "1rem", textAlign: "center" }}>
+                <span>Autonomous CSS patch ready</span>
+                <span style={{ fontSize: "0.72rem", opacity: 0.7 }}>Review CSS code diff below</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [deviceFilter, setDeviceFilter] = useState("all");
   const [selectedRun, setSelectedRun] = useState(null);
   const [runDetails, setRunDetails] = useState(null);
   const [actioningBug, setActioningBug] = useState(null);
@@ -418,6 +690,46 @@ function App() {
     }
   };
 
+
+  const stopScan = async () => {
+    setStopping(true);
+    try {
+      const activeRun = runs.find(
+        (run) =>
+          String(run.status).toLowerCase() === "running" ||
+          String(run.status).toLowerCase() === "pending"
+      );
+      const runIdToStop =
+        activeRun?.run_id ||
+        (selectedRun && selectedRun !== "design" && selectedRun !== "settings"
+          ? selectedRun
+          : null);
+
+      const endpoint = runIdToStop
+        ? `${API_BASE}/scan/${runIdToStop}/stop`
+        : `${API_BASE}/scan/stop`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+
+      setScanStage("Scan stopped by user");
+      setScanning(false);
+      await fetchRuns();
+      if (runIdToStop) {
+        await viewRunDetails(runIdToStop);
+      }
+    } catch (err) {
+      console.error("Failed to stop scan:", err);
+      setScanning(false);
+      setScanStage("Scan stopped");
+    } finally {
+      setStopping(false);
+    }
+  };
+
   const viewRunDetails = async (runId, currentSelected) => {
     if (currentSelected !== runId) {
       setRunDetails(null);
@@ -531,8 +843,8 @@ function App() {
               {selectedRun === 'settings'
                 ? 'Preferences, visual theme, and system controls'
                 : selectedRun === 'design'
-                ? 'Autonomous prompt-driven UI restyling & bug elimination'
-                : 'Multimodal UI Self-Healing & RPA Agent'}
+                  ? 'Autonomous prompt-driven UI restyling & bug elimination'
+                  : 'Multimodal UI Self-Healing & RPA Agent'}
             </p>
           </div>
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
@@ -611,26 +923,53 @@ function App() {
                 </button>
               )}
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={triggerScan}
-              disabled={scanning}
-              title="Runs autonomous UI bug detection on dashboard with pre-loaded prompts: UI layout & contrast/visibility remediation"
-              style={{
-                padding: "0.75rem 1.25rem",
-                borderRadius: "10px",
-                fontWeight: 500,
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)",
-                cursor: scanning ? "not-allowed" : "pointer",
-                opacity: scanning ? 0.7 : 1,
-              }}
-            >
-              <Play size={18} />
-              {scanning ? "Scanning..." : "Scan URL"}
-            </button>
+            {scanning ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={stopScan}
+                disabled={stopping}
+                title="Stop the scan immediately to enter another URL or restart"
+                style={{
+                  padding: "0.75rem 1.25rem",
+                  borderRadius: "10px",
+                  fontWeight: 600,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  background: "linear-gradient(135deg, #ef4444, #b91c1c)",
+                  color: "#ffffff",
+                  border: "1px solid rgba(239, 68, 68, 0.6)",
+                  boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)",
+                  cursor: stopping ? "not-allowed" : "pointer",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <Square size={15} fill="#ffffff" />
+                {stopping ? "Stopping..." : "Stop Scan"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={triggerScan}
+                disabled={scanning}
+                title="Runs autonomous UI bug detection on dashboard with pre-loaded prompts: UI layout & contrast/visibility remediation"
+                style={{
+                  padding: "0.75rem 1.25rem",
+                  borderRadius: "10px",
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)",
+                  cursor: "pointer",
+                }}
+              >
+                <Play size={18} />
+                Scan URL
+              </button>
+            )}
 
             <div
               className={`github-badge ${githubStatus.configured ? "connected" : "disconnected"}`}
@@ -669,1224 +1008,1125 @@ function App() {
 
         {selectedRun !== 'design' && selectedRun !== 'settings' && (
           <main className="grid grid-cols-3">
-          {/* Pipeline Progress Indicator */}
-          {scanning && (
-            <div
-              className="glass-panel animate-fade-in"
-              style={{
-                gridColumn: "span 3",
-                padding: "2rem",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "1.5rem",
-                background:
-                  "linear-gradient(145deg, rgba(22, 25, 37, 0.8), rgba(99, 102, 241, 0.1))",
-              }}
-            >
-              <h3
-                style={{ fontSize: "1.125rem", color: "var(--text-primary)" }}
-              >
-                Scan in Progress
-              </h3>
+            {/* Pipeline Progress Indicator */}
+            {scanning && (
               <div
+                className="glass-panel animate-fade-in"
                 style={{
+                  gridColumn: "span 3",
+                  padding: "2rem",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                  justifyContent: "center",
+                  gap: "1.5rem",
+                  background:
+                    "linear-gradient(145deg, rgba(22, 25, 37, 0.8), rgba(99, 102, 241, 0.1))",
                 }}
               >
-                {[
-                  { key: "Capturing", label: "Capturing Screenshots" },
-                  { key: "Analyzing", label: "Analyzing with VLM" },
-                  { key: "Fixing", label: "Applying AI Fixes" },
-                  { key: "PR", label: "Generating PR" },
-                ].map((item, idx) => {
-                  const stageKeywords = ["captur", "analyz", "fix", "pr"];
-                  const currentLower = (scanStage || "").toLowerCase();
-                  const currentIdx = stageKeywords.findIndex((kw) => currentLower.includes(kw));
-                  const isActive = currentIdx === idx;
-                  const isPast = currentIdx > idx;
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    width: "100%",
+                    maxWidth: "820px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <Activity className="animate-spin text-accent" size={20} />
+                    <h3 style={{ fontSize: "1.125rem", color: "var(--text-primary)", margin: 0, fontWeight: 600 }}>
+                      Scan & Evaluation in Progress...
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopScan}
+                    disabled={stopping}
+                    title="Stop the current evaluation immediately so you can change URL or restart"
+                    style={{
+                      padding: "0.45rem 1rem",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
+                      background: "rgba(239, 68, 68, 0.2)",
+                      border: "1px solid rgba(239, 68, 68, 0.45)",
+                      color: "#fca5a5",
+                      cursor: stopping ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = "rgba(239, 68, 68, 0.35)";
+                      e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.8)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+                      e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.45)";
+                    }}
+                  >
+                    <Square size={13} fill="#fca5a5" />
+                    {stopping ? "Stopping..." : "Stop Process"}
+                  </button>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                  }}
+                >
+                  {[
+                    { key: "Capturing", label: "Capturing Screenshots" },
+                    { key: "Analyzing", label: "Analyzing with VLM" },
+                    { key: "Fixing", label: "Applying AI Fixes" },
+                    { key: "PR", label: "Generating PR" },
+                  ].map((item, idx) => {
+                    const stageKeywords = ["captur", "analyz", "fix", "pr"];
+                    const currentLower = (scanStage || "").toLowerCase();
+                    const currentIdx = stageKeywords.findIndex((kw) => currentLower.includes(kw));
+                    const isActive = currentIdx === idx;
+                    const isPast = currentIdx > idx;
 
-                  return (
-                    <div
-                      key={item.key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "1rem",
-                      }}
-                    >
+                    return (
                       <div
+                        key={item.key}
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.5rem",
-                          color: isActive
-                            ? "var(--accent-primary)"
-                            : isPast
-                              ? "var(--success)"
-                              : "var(--text-muted)",
-                          transition: "all 0.3s ease",
+                          gap: "1rem",
                         }}
                       >
-                        {isPast ? (
-                          <CheckCircle
-                            size={20}
-                            className="animate-fade-in"
-                          />
-                        ) : isActive ? (
-                          <Activity className="animate-spin" size={20} />
-                        ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            color: isActive
+                              ? "var(--accent-primary)"
+                              : isPast
+                                ? "var(--success)"
+                                : "var(--text-muted)",
+                            transition: "all 0.3s ease",
+                          }}
+                        >
+                          {isPast ? (
+                            <CheckCircle
+                              size={20}
+                              className="animate-fade-in"
+                            />
+                          ) : isActive ? (
+                            <Activity className="animate-spin" size={20} />
+                          ) : (
+                            <div
+                              style={{
+                                width: "20px",
+                                height: "20px",
+                                borderRadius: "50%",
+                                border: "2px solid currentColor",
+                              }}
+                            ></div>
+                          )}
+                          <span
+                            style={{
+                              fontWeight: isActive ? 600 : 400,
+                              fontSize: "0.9375rem",
+                            }}
+                          >
+                            {item.label}
+                          </span>
+                        </div>
+                        {idx < 3 && (
                           <div
                             style={{
-                              width: "20px",
-                              height: "20px",
-                              borderRadius: "50%",
-                              border: "2px solid currentColor",
+                              width: "40px",
+                              height: "2px",
+                              background: isPast
+                                ? "var(--success)"
+                                : "var(--border-glass)",
+                              transition: "all 0.3s ease",
                             }}
                           ></div>
                         )}
-                        <span
-                          style={{
-                            fontWeight: isActive ? 600 : 400,
-                            fontSize: "0.9375rem",
-                          }}
-                        >
-                          {item.label}
-                        </span>
                       </div>
-                      {idx < 3 && (
-                        <div
-                          style={{
-                            width: "40px",
-                            height: "2px",
-                            background: isPast
-                              ? "var(--success)"
-                              : "var(--border-glass)",
-                            transition: "all 0.3s ease",
-                          }}
-                        ></div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                <p
+                  style={{
+                    color: "var(--text-secondary)",
+                    fontSize: "0.875rem",
+                    marginTop: "0.5rem",
+                  }}
+                  className="animate-pulse"
+                >
+                  {scanStage}
+                </p>
               </div>
-              <p
-                style={{
-                  color: "var(--text-secondary)",
-                  fontSize: "0.875rem",
-                  marginTop: "0.5rem",
-                }}
-                className="animate-pulse"
-              >
-                {scanStage}
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* Left Column: Recent Runs */}
-          <div
-            className="glass-panel card animate-fade-in delay-100"
-            style={{ gridColumn: "span 1" }}
-          >
-            <h2
-              className="card-title"
-              style={{
-                marginBottom: "1.5rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
+            {/* Left Column: Recent Runs */}
+            <div
+              className="glass-panel card animate-fade-in delay-100"
+              style={{ gridColumn: "span 1" }}
             >
-              <Activity size={20} className="text-accent" />
-              Recent Scans
-            </h2>
-
-            {loading ? (
-              <div
+              <h2
+                className="card-title"
                 style={{
-                  padding: "2rem",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                }}
-              >
-                Loading runs...
-              </div>
-            ) : runs.length === 0 ? (
-              <div
-                style={{
-                  padding: "2rem",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                }}
-              >
-                No scans run yet.
-              </div>
-            ) : (
-              <div
-                style={{
+                  marginBottom: "1.5rem",
                   display: "flex",
-                  flexDirection: "column",
-                  gap: "1rem",
+                  alignItems: "center",
+                  gap: "0.5rem",
                 }}
               >
-                {runs.map((run) => (
-                  <div
-                    key={run.run_id}
-                    className="glass-panel"
-                    style={{
-                      padding: "1rem",
-                      cursor: "pointer",
-                      borderColor:
-                        selectedRun === run.run_id
-                          ? "var(--accent-primary)"
-                          : "var(--border-glass)",
-                      transition: "all 0.2s",
-                    }}
-                    onClick={() => viewRunDetails(run.run_id)}
-                  >
+                <Activity size={20} className="text-accent" />
+                Recent Scans
+              </h2>
+
+              {loading ? (
+                <div
+                  style={{
+                    padding: "2rem",
+                    textAlign: "center",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  Loading runs...
+                </div>
+              ) : runs.length === 0 ? (
+                <div
+                  style={{
+                    padding: "2rem",
+                    textAlign: "center",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  No scans run yet.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "1rem",
+                  }}
+                >
+                  {runs.map((run) => (
                     <div
+                      key={run.run_id}
+                      className="glass-panel"
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
+                        padding: "1rem",
+                        cursor: "pointer",
+                        borderColor:
+                          selectedRun === run.run_id
+                            ? "var(--accent-primary)"
+                            : "var(--border-glass)",
+                        transition: "all 0.2s",
                       }}
+                      onClick={() => viewRunDetails(run.run_id)}
                     >
                       <div
                         style={{
                           display: "flex",
+                          justifyContent: "space-between",
                           alignItems: "center",
-                          gap: "0.5rem",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <span
+                            className={`status-dot status-${run.status}`}
+                          ></span>
+                          <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>
+                            {new Date(run.started_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <ChevronRight size={16} color="var(--text-muted)" />
+                      </div>
+                      <div
+                        className="card-meta"
+                        style={{
+                          marginTop: "0.75rem",
+                          justifyContent: "space-between",
                         }}
                       >
                         <span
-                          className={`status-dot status-${run.status}`}
-                        ></span>
-                        <span style={{ fontWeight: 500, fontSize: "0.875rem" }}>
-                          {new Date(run.started_at).toLocaleString()}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                          }}
+                        >
+                          <Bug size={14} />
+                          {run.total_bugs} bugs
+                        </span>
+                        <span style={{ textTransform: "capitalize" }}>
+                          {run.status}
                         </span>
                       </div>
-                      <ChevronRight size={16} color="var(--text-muted)" />
                     </div>
-                    <div
-                      className="card-meta"
-                      style={{
-                        marginTop: "0.75rem",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.25rem",
-                        }}
-                      >
-                        <Bug size={14} />
-                        {run.total_bugs} bugs
-                      </span>
-                      <span style={{ textTransform: "capitalize" }}>
-                        {run.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Right Column: Run Details */}
-          <div
-            className="glass-panel card animate-fade-in delay-200"
-            style={{ gridColumn: "span 2", minHeight: "500px" }}
-          >
-            {!selectedRun ? (
-              <div
-                style={{
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-muted)",
-                }}
-              >
-                Select a scan from the left to view details
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "1rem",
-                  height: "100%",
-                }}
-              >
-                {/* Collapsible Website Preview (Toggleable to save CPU/RAM) */}
+            {/* Right Column: Run Details */}
+            <div
+              className="glass-panel card animate-fade-in delay-200"
+              style={{ gridColumn: "span 2", minHeight: "500px" }}
+            >
+              {!selectedRun ? (
                 <div
                   style={{
-                    width: "100%",
-                    borderRadius: "10px",
-                    overflow: "hidden",
-                    border: "1px solid var(--border-glass)",
-                    background: "rgba(255,255,255,0.02)",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "var(--text-muted)",
                   }}
                 >
-                  <div
-                    style={{
-                      padding: "0.75rem 1rem",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      background: "rgba(255,255,255,0.03)",
-                      borderBottom: showPreview ? "1px solid var(--border-glass)" : "none",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-                      <Globe size={16} color="var(--accent-primary)" />
-                      <span>Live Site Preview: <strong style={{ color: "var(--text-primary)" }}>{runs.find((r) => r.run_id === selectedRun)?.url || "Target Site"}</strong></span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewKey(Date.now());
-                          setDownloadSuccessMsg("🔄 Refreshed live preview bypassing browser cache.");
-                          setTimeout(() => setDownloadSuccessMsg(""), 4000);
-                        }}
-                        title="Force reload the preview site bypassing browser cache"
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          fontSize: "0.75rem",
-                          borderRadius: "6px",
-                          border: "1px solid var(--border-glass)",
-                          background: "rgba(255, 255, 255, 0.08)",
-                          color: "var(--text-secondary)",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.35rem",
-                        }}
-                      >
-                        <RotateCcw size={13} />
-                        Hard Reload Preview
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowPreview(!showPreview)}
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          fontSize: "0.75rem",
-                          borderRadius: "6px",
-                          border: "1px solid var(--border-glass)",
-                          background: showPreview ? "rgba(239, 68, 68, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                          color: showPreview ? "#fca5a5" : "#a5b4fc",
-                          cursor: "pointer",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {showPreview ? "Hide Preview" : "Load Live Preview"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {showPreview && (
-                    <div style={{ width: "100%", height: "350px" }}>
-                      {runs.find((r) => r.run_id === selectedRun)?.url ? (
-                        <iframe
-                          key={previewKey}
-                          src={
-                            runs.find((r) => r.run_id === selectedRun)?.url
-                              ? `${runs.find((r) => r.run_id === selectedRun)?.url}${
-                                  runs.find((r) => r.run_id === selectedRun)?.url.includes("?") ? "&" : "?"
-                                }_cb=${previewKey}`
-                              : ""
-                          }
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            border: "none",
-                            background: "#fff",
-                          }}
-                          loading="lazy"
-                          title="Target Website Preview"
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            height: "100%",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          No URL available for preview
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  Select a scan from the left to view details
                 </div>
-
-                {!runDetails ? (
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "1rem",
+                    height: "100%",
+                  }}
+                >
+                  {/* Collapsible Website Preview (Toggleable to save CPU/RAM) */}
                   <div
                     style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "var(--text-muted)",
+                      width: "100%",
+                      borderRadius: "10px",
+                      overflow: "hidden",
+                      border: "1px solid var(--border-glass)",
+                      background: "rgba(255,255,255,0.02)",
                     }}
                   >
-                    <Activity
-                      className="animate-spin"
-                      style={{ marginRight: "0.5rem" }}
-                    />
-                    Loading details...
-                  </div>
-                ) : (
-                  <div>
                     <div
-                      className="card-header"
                       style={{
-                        borderBottom: "1px solid var(--border-glass)",
-                        paddingBottom: "1rem",
+                        padding: "0.75rem 1rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "rgba(255,255,255,0.03)",
+                        borderBottom: showPreview ? "1px solid var(--border-glass)" : "none",
                       }}
                     >
-                      <div>
-                        <h2
-                          className="card-title"
-                          style={{ fontSize: "1.5rem" }}
-                        >
-                          Scan Details
-                        </h2>
-                        <div className="card-meta">ID: {runDetails.run_id}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", color: "var(--text-secondary)" }}>
+                        <Globe size={16} color="var(--accent-primary)" />
+                        <span>Live Site Preview: <strong style={{ color: "var(--text-primary)" }}>{runs.find((r) => r.run_id === selectedRun)?.url || "Target Site"}</strong></span>
                       </div>
-                      <div style={{ display: "flex", gap: "1rem" }}>
-                        <div
-                          className="glass-panel"
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreviewKey(Date.now());
+                            setDownloadSuccessMsg("🔄 Refreshed live preview bypassing browser cache.");
+                            setTimeout(() => setDownloadSuccessMsg(""), 4000);
+                          }}
+                          title="Force reload the preview site bypassing browser cache"
                           style={{
-                            padding: "0.5rem 1rem",
+                            padding: "0.35rem 0.75rem",
+                            fontSize: "0.75rem",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border-glass)",
+                            background: "rgba(255, 255, 255, 0.08)",
+                            color: "var(--text-secondary)",
+                            cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
-                            gap: "0.5rem",
+                            gap: "0.35rem",
                           }}
                         >
-                          <Clock size={16} />
-                          {runDetails.duration_seconds
-                            ? `${runDetails.duration_seconds.toFixed(2)}s`
-                            : "N/A"}
-                        </div>
-                        <div
-                          className="glass-panel"
+                          <RotateCcw size={13} />
+                          Hard Reload Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowPreview(!showPreview)}
                           style={{
-                            padding: "0.5rem 1rem",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
+                            padding: "0.35rem 0.75rem",
+                            fontSize: "0.75rem",
+                            borderRadius: "6px",
+                            border: "1px solid var(--border-glass)",
+                            background: showPreview ? "rgba(239, 68, 68, 0.15)" : "rgba(99, 102, 241, 0.15)",
+                            color: showPreview ? "#fca5a5" : "#a5b4fc",
+                            cursor: "pointer",
+                            fontWeight: 500,
                           }}
                         >
-                          <Bug size={16} />
-                          {runDetails.total_bugs} Bugs Found
+                          {showPreview ? "Hide Preview" : "Load Live Preview"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {showPreview && (
+                      <div style={{ width: "100%", height: "350px" }}>
+                        {runs.find((r) => r.run_id === selectedRun)?.url ? (
+                          <iframe
+                            key={previewKey}
+                            src={
+                              runs.find((r) => r.run_id === selectedRun)?.url
+                                ? `${runs.find((r) => r.run_id === selectedRun)?.url}${runs.find((r) => r.run_id === selectedRun)?.url.includes("?") ? "&" : "?"
+                                }_cb=${previewKey}`
+                                : ""
+                            }
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              border: "none",
+                              background: "#fff",
+                            }}
+                            loading="lazy"
+                            title="Target Website Preview"
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            No URL available for preview
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {!runDetails ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      <Activity
+                        className="animate-spin"
+                        style={{ marginRight: "0.5rem" }}
+                      />
+                      Loading details...
+                    </div>
+                  ) : (
+                    <div>
+                      <div
+                        className="card-header"
+                        style={{
+                          borderBottom: "1px solid var(--border-glass)",
+                          paddingBottom: "1rem",
+                        }}
+                      >
+                        <div>
+                          <h2
+                            className="card-title"
+                            style={{ fontSize: "1.5rem" }}
+                          >
+                            Scan Details
+                          </h2>
+                          <div className="card-meta">ID: {runDetails.run_id}</div>
                         </div>
-                        {(runDetails.status === "COMPLETED" || runDetails.status === "completed") && (
-                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-                            {runDetails.pr_url ? (
-                              <>
-                                <a
-                                  href={runDetails.pr_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="btn"
-                                  style={{
-                                    padding: "0.5rem 1rem",
-                                    background: "#10b981",
-                                    color: "#fff",
-                                    fontWeight: "bold",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                    borderRadius: "8px",
-                                    textDecoration: "none",
-                                  }}
-                                  title="Open the pull request created by OmniSight on GitHub"
-                                >
-                                  <CheckCircle size={16} />
-                                  View PR on GitHub ↗
-                                </a>
+                        <div style={{ display: "flex", gap: "1rem" }}>
+                          <div
+                            className="glass-panel"
+                            style={{
+                              padding: "0.5rem 1rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                            }}
+                          >
+                            <Clock size={16} />
+                            {runDetails.duration_seconds
+                              ? `${runDetails.duration_seconds.toFixed(2)}s`
+                              : "N/A"}
+                          </div>
+                          <div
+                            className="glass-panel"
+                            style={{
+                              padding: "0.5rem 1rem",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                            }}
+                          >
+                            <Bug size={16} />
+                            {runDetails.total_bugs} Bugs Found
+                          </div>
+                          {(runDetails.status === "COMPLETED" || runDetails.status === "completed") && (
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                              {runDetails.pr_url ? (
+                                <>
+                                  <a
+                                    href={runDetails.pr_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn"
+                                    style={{
+                                      padding: "0.5rem 1rem",
+                                      background: "#10b981",
+                                      color: "#fff",
+                                      fontWeight: "bold",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.5rem",
+                                      borderRadius: "8px",
+                                      textDecoration: "none",
+                                    }}
+                                    title="Open the pull request created by OmniSight on GitHub"
+                                  >
+                                    <CheckCircle size={16} />
+                                    View PR on GitHub ↗
+                                  </a>
+                                  <button
+                                    className="btn"
+                                    disabled={syncingPr}
+                                    onClick={() => handleSyncPr(runDetails.run_id)}
+                                    style={{
+                                      padding: "0.5rem 1rem",
+                                      background: "#2563eb",
+                                      color: "#fff",
+                                      fontWeight: "bold",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.5rem",
+                                      borderRadius: "8px",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      boxShadow: "0 2px 8px rgba(37, 99, 235, 0.3)",
+                                    }}
+                                    title="Check if the PR was merged on GitHub and immediately sync changes to the live site"
+                                  >
+                                    {syncingPr ? (
+                                      <Activity className="animate-spin" size={16} />
+                                    ) : (
+                                      <RotateCcw size={16} />
+                                    )}
+                                    {syncingPr ? "Syncing PR..." : "🔄 Sync Merged PR to Site"}
+                                  </button>
+                                </>
+                              ) : (
                                 <button
-                                  className="btn"
-                                  disabled={syncingPr}
-                                  onClick={() => handleSyncPr(runDetails.run_id)}
-                                  style={{
-                                    padding: "0.5rem 1rem",
-                                    background: "#2563eb",
-                                    color: "#fff",
-                                    fontWeight: "bold",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                    borderRadius: "8px",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    boxShadow: "0 2px 8px rgba(37, 99, 235, 0.3)",
-                                  }}
-                                  title="Check if the PR was merged on GitHub and immediately sync changes to the live site"
+                                  className="btn-github-pr"
+                                  disabled={creatingPr}
+                                  onClick={() => handleCreatePr(runDetails.run_id)}
+                                  title={
+                                    githubStatus.configured
+                                      ? "Autonomously push fixes and open Pull Request on GitHub"
+                                      : "Connect your GitHub account to enable 1-click PR"
+                                  }
                                 >
-                                  {syncingPr ? (
+                                  {creatingPr ? (
                                     <Activity className="animate-spin" size={16} />
                                   ) : (
-                                    <RotateCcw size={16} />
+                                    <GitPullRequest size={16} />
                                   )}
-                                  {syncingPr ? "Syncing PR..." : "🔄 Sync Merged PR to Site"}
+                                  {creatingPr ? "Pushing PR to GitHub..." : "🚀 Push Fixes to GitHub (Open PR)"}
                                 </button>
-                              </>
-                            ) : (
-                              <button
-                                className="btn-github-pr"
-                                disabled={creatingPr}
-                                onClick={() => handleCreatePr(runDetails.run_id)}
-                                title={
-                                  githubStatus.configured
-                                    ? "Autonomously push fixes and open Pull Request on GitHub"
-                                    : "Connect your GitHub account to enable 1-click PR"
-                                }
+                              )}
+
+                              <a
+                                href={`${API_BASE}/scans/${runDetails.run_id}/fixed_code.txt`}
+                                download="fixed_code.txt"
+                                className="btn"
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  background: "#059669",
+                                  color: "#fff",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  cursor: "pointer",
+                                  borderRadius: "8px",
+                                  border: "none",
+                                  textDecoration: "none",
+                                }}
+                                title="Download fixed code directly as a Windows Notepad (.txt) file"
+                                onClick={() => {
+                                  setDownloadSuccessMsg("✅ Downloaded 'fixed_code.txt'! Double-click in Downloads to open in Windows Notepad.");
+                                  setTimeout(() => setDownloadSuccessMsg(""), 6000);
+                                }}
                               >
-                                {creatingPr ? (
-                                  <Activity className="animate-spin" size={16} />
-                                ) : (
-                                  <GitPullRequest size={16} />
-                                )}
-                                {creatingPr ? "Pushing PR to GitHub..." : "🚀 Push Fixes to GitHub (Open PR)"}
+                                <FileText size={16} />
+                                Download Notepad File (.txt)
+                              </a>
+                              <button
+                                className="btn"
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  background: "#0284c7",
+                                  color: "#fff",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  cursor: "pointer",
+                                  borderRadius: "8px",
+                                  border: "none",
+                                }}
+                                title="Instantly open the fixed code directly inside Windows Notepad on your PC"
+                                onClick={() => handleOpenNotepad(runDetails.run_id)}
+                              >
+                                <ExternalLink size={16} />
+                                Open in Notepad
                               </button>
-                            )}
 
-                            <a
-                              href={`${API_BASE}/scans/${runDetails.run_id}/fixed_code.txt`}
-                              download="fixed_code.txt"
-                              className="btn"
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#059669",
-                                color: "#fff",
-                                fontWeight: "bold",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                cursor: "pointer",
-                                borderRadius: "8px",
-                                border: "none",
-                                textDecoration: "none",
-                              }}
-                              title="Download fixed code directly as a Windows Notepad (.txt) file"
-                              onClick={() => {
-                                setDownloadSuccessMsg("✅ Downloaded 'fixed_code.txt'! Double-click in Downloads to open in Windows Notepad.");
-                                setTimeout(() => setDownloadSuccessMsg(""), 6000);
-                              }}
-                            >
-                              <FileText size={16} />
-                              Download Notepad File (.txt)
-                            </a>
-                            <button
-                              className="btn"
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#0284c7",
-                                color: "#fff",
-                                fontWeight: "bold",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                cursor: "pointer",
-                                borderRadius: "8px",
-                                border: "none",
-                              }}
-                              title="Instantly open the fixed code directly inside Windows Notepad on your PC"
-                              onClick={() => handleOpenNotepad(runDetails.run_id)}
-                            >
-                              <ExternalLink size={16} />
-                              Open in Notepad
-                            </button>
+                              <a
+                                href={`${API_BASE}/scans/${runDetails.run_id}/omnisight_scan_fixes.zip`}
+                                download="omnisight_scan_fixes.zip"
+                                className="btn btn-primary"
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  background: "var(--accent-primary)",
+                                  color: "#fff",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  cursor: "pointer",
+                                  borderRadius: "8px",
+                                  textDecoration: "none",
+                                }}
+                                title="Download complete ZIP containing fixed_code.txt, styles.css, and index.html"
+                                onClick={() => {
+                                  setDownloadSuccessMsg("✅ Downloaded 'omnisight_scan_fixes.zip'! You can open it in File Explorer. Also saved to your Downloads folder.");
+                                  setTimeout(() => setDownloadSuccessMsg(""), 6000);
+                                }}
+                              >
+                                <Download size={16} />
+                                Download ZIP (.zip)
+                              </a>
+                              <button
+                                className="btn"
+                                style={{
+                                  padding: "0.5rem 1rem",
+                                  background: "#334155",
+                                  color: "#fff",
+                                  fontWeight: "bold",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  cursor: "pointer",
+                                  borderRadius: "8px",
+                                  border: "none",
+                                }}
+                                title="View or copy Notepad code directly on screen"
+                                onClick={() => setShowNotepadCode(!showNotepadCode)}
+                              >
+                                <Eye size={16} />
+                                {showNotepadCode ? "Hide Notepad View" : "View Code on Screen"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                            <a
-                              href={`${API_BASE}/scans/${runDetails.run_id}/omnisight_scan_fixes.zip`}
-                              download="omnisight_scan_fixes.zip"
-                              className="btn btn-primary"
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "var(--accent-primary)",
-                                color: "#fff",
-                                fontWeight: "bold",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                cursor: "pointer",
-                                borderRadius: "8px",
-                                textDecoration: "none",
-                              }}
-                              title="Download complete ZIP containing fixed_code.txt, styles.css, and index.html"
-                              onClick={() => {
-                                setDownloadSuccessMsg("✅ Downloaded 'omnisight_scan_fixes.zip'! You can open it in File Explorer. Also saved to your Downloads folder.");
-                                setTimeout(() => setDownloadSuccessMsg(""), 6000);
-                              }}
-                            >
-                              <Download size={16} />
-                              Download ZIP (.zip)
-                            </a>
-                            <button
-                              className="btn"
-                              style={{
-                                padding: "0.5rem 1rem",
-                                background: "#334155",
-                                color: "#fff",
-                                fontWeight: "bold",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                cursor: "pointer",
-                                borderRadius: "8px",
-                                border: "none",
-                              }}
-                              title="View or copy Notepad code directly on screen"
-                              onClick={() => setShowNotepadCode(!showNotepadCode)}
-                            >
-                              <Eye size={16} />
-                              {showNotepadCode ? "Hide Notepad View" : "View Code on Screen"}
-                            </button>
+                      {downloadSuccessMsg && (
+                        <div
+                          style={{
+                            marginTop: "1rem",
+                            padding: "0.85rem 1.25rem",
+                            background: "rgba(16, 185, 129, 0.15)",
+                            border: "1px solid #10b981",
+                            borderRadius: "8px",
+                            color: "#6ee7b7",
+                            fontSize: "0.9rem",
+                            fontWeight: "500",
+                          }}
+                        >
+                          {downloadSuccessMsg}
+                        </div>
+                      )}
+
+                      {showNotepadCode && (
+                        <div
+                          className="glass-panel"
+                          style={{
+                            marginTop: "1.5rem",
+                            padding: "1.5rem",
+                            background: "#020617",
+                            border: "1px solid #38bdf8",
+                            borderRadius: "10px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: "1rem",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <FileText size={20} color="#38bdf8" />
+                              <h4 style={{ margin: 0, color: "#f8fafc", fontSize: "1.05rem" }}>
+                                Notepad Code Viewer — fixed_code.txt
+                              </h4>
+                            </div>
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                              <button
+                                className="btn"
+                                style={{
+                                  padding: "0.4rem 0.8rem",
+                                  background: copySuccess ? "#10b981" : "#1e293b",
+                                  color: "#fff",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.4rem",
+                                  cursor: "pointer",
+                                  borderRadius: "6px",
+                                  border: "1px solid #475569",
+                                  fontSize: "0.85rem",
+                                }}
+                                onClick={handleCopyNotepadCode}
+                              >
+                                {copySuccess ? <Check size={14} /> : <Copy size={14} />}
+                                {copySuccess ? "Copied!" : "Copy Notepad Code"}
+                              </button>
+                              <a
+                                href={`${API_BASE}/scans/${runDetails.run_id}/fixed_code.txt`}
+                                download="fixed_code.txt"
+                                className="btn"
+                                style={{
+                                  padding: "0.4rem 0.8rem",
+                                  background: "#059669",
+                                  color: "#fff",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.4rem",
+                                  cursor: "pointer",
+                                  borderRadius: "6px",
+                                  border: "none",
+                                  fontSize: "0.85rem",
+                                  textDecoration: "none",
+                                }}
+                                onClick={() => {
+                                  setDownloadSuccessMsg("✅ Downloaded 'fixed_code.txt'! Double-click in Downloads to open in Windows Notepad.");
+                                  setTimeout(() => setDownloadSuccessMsg(""), 6000);
+                                }}
+                              >
+                                <Download size={14} />
+                                Save as .txt
+                              </a>
+                            </div>
+                          </div>
+                          <textarea
+                            readOnly
+                            value={notepadContent || "Loading fixed code in Notepad format..."}
+                            rows={14}
+                            style={{
+                              width: "100%",
+                              background: "#090d16",
+                              color: "#e2e8f0",
+                              border: "1px solid #1e293b",
+                              borderRadius: "6px",
+                              padding: "1rem",
+                              fontFamily: "Consolas, 'Courier New', monospace",
+                              fontSize: "0.85rem",
+                              lineHeight: "1.5",
+                              resize: "vertical",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: "2rem" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.85rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                          <h3 style={{ margin: 0 }}>Detected Issues</h3>
+                          {runDetails?.bugs && runDetails.bugs.length > 0 && (
+                            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                                Device Filter:
+                              </span>
+                              {[
+                                { id: "all", label: "All Devices", icon: "🌐" },
+                                { id: "mobile", label: "Mobile (375px)", icon: "📱" },
+                                { id: "tablet", label: "Tablet (768px)", icon: "📟" },
+                                { id: "desktop", label: "PC Desktop", icon: "💻" },
+                              ].map((dev) => {
+                                const count = dev.id === "all"
+                                  ? runDetails.bugs.length
+                                  : runDetails.bugs.filter((b) => (b.viewport || "").toLowerCase().includes(dev.id)).length;
+                                const isSelected = deviceFilter === dev.id;
+                                return (
+                                  <button
+                                    key={dev.id}
+                                    type="button"
+                                    onClick={() => setDeviceFilter(dev.id)}
+                                    style={{
+                                      padding: "3px 10px",
+                                      borderRadius: "16px",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                      background: isSelected ? "var(--accent-primary)" : "rgba(255,255,255,0.06)",
+                                      color: isSelected ? "#ffffff" : "var(--text-muted)",
+                                      border: isSelected ? "1px solid var(--accent-primary)" : "1px solid var(--border-glass)",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      transition: "all 0.15s ease",
+                                    }}
+                                  >
+                                    <span>{dev.icon}</span>
+                                    <span>{dev.label}</span>
+                                    <span
+                                      style={{
+                                        background: isSelected ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)",
+                                        padding: "1px 5px",
+                                        borderRadius: "10px",
+                                        fontSize: "0.7rem",
+                                        marginLeft: "2px",
+                                      }}
+                                    >
+                                      {count}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        {runDetails.status === "RUNNING" || runDetails.status === "running" ? (
+                          <div
+                            className="glass-panel"
+                            style={{
+                              padding: "2rem",
+                              textAlign: "center",
+                              color: "var(--text-muted)",
+                            }}
+                          >
+                            <Activity
+                              className="animate-spin"
+                              size={48}
+                              style={{ margin: "0 auto 1rem", color: "var(--accent-primary)" }}
+                            />
+                            <p>Analyzing UI for bugs...</p>
+                          </div>
+                        ) : runDetails.bugs.length === 0 ? (
+                          <div
+                            className="glass-panel"
+                            style={{
+                              padding: "2rem",
+                              textAlign: "center",
+                              color: "var(--success)",
+                            }}
+                          >
+                            <CheckCircle
+                              size={48}
+                              style={{ margin: "0 auto 1rem" }}
+                            />
+                            <p>No UI bugs detected in this scan!</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1">
+                            {(deviceFilter === "all"
+                              ? runDetails.bugs
+                              : runDetails.bugs.filter((b) => (b.viewport || "").toLowerCase().includes(deviceFilter))
+                            ).map((bug, index) => (
+                              <div
+                                key={bug.id}
+                                className="glass-panel animate-fade-in"
+                                style={{
+                                  padding: "1.5rem",
+                                  animationDelay: `${index * 100}ms`,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "flex-start",
+                                    marginBottom: "1rem",
+                                  }}
+                                >
+                                  <h4
+                                    style={{
+                                      fontSize: "1.125rem",
+                                      color: "var(--text-primary)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      flexWrap: "wrap",
+                                      gap: "0.5rem",
+                                    }}
+                                  >
+                                    {bug.title}
+                                    {bug.verification_status ===
+                                      "verified_fixed" && (
+                                        <span
+                                          className="badge"
+                                          style={{
+                                            background: "rgba(16, 185, 129, 0.15)",
+                                            color: "#6ee7b7",
+                                            border:
+                                              "1px solid rgba(16, 185, 129, 0.3)",
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "4px",
+                                          }}
+                                        >
+                                          <CheckCircle size={12} /> Verified Fixed
+                                        </span>
+                                      )}
+                                    {bug.verification_status ===
+                                      "still_broken" && (
+                                        <span
+                                          className="badge"
+                                          style={{
+                                            background: "rgba(239, 68, 68, 0.15)",
+                                            color: "#fca5a5",
+                                            border:
+                                              "1px solid rgba(239, 68, 68, 0.3)",
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "4px",
+                                          }}
+                                        >
+                                          <XCircle size={12} /> Still Broken
+                                        </span>
+                                      )}
+                                  </h4>
+                                  <span className={`badge badge-${bug.severity}`}>
+                                    {bug.severity}
+                                  </span>
+                                </div>
+
+                                <p
+                                  style={{
+                                    color: "var(--text-secondary)",
+                                    marginBottom: "1rem",
+                                  }}
+                                >
+                                  {bug.description}
+                                </p>
+
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "1fr 1fr",
+                                    gap: "1rem",
+                                    fontSize: "0.875rem",
+                                  }}
+                                >
+                                  <div>
+                                    <span
+                                      style={{
+                                        color: "var(--text-muted)",
+                                        display: "block",
+                                        marginBottom: "0.25rem",
+                                      }}
+                                    >
+                                      Category
+                                    </span>
+                                    <span style={{ textTransform: "capitalize" }}>
+                                      {bug.category}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span
+                                      style={{
+                                        color: "var(--text-muted)",
+                                        display: "block",
+                                        marginBottom: "0.25rem",
+                                      }}
+                                    >
+                                      Viewport
+                                    </span>
+                                    <span style={{ textTransform: "capitalize" }}>
+                                      {bug.viewport}
+                                    </span>
+                                  </div>
+                                  <div style={{ gridColumn: "span 2" }}>
+                                    <span
+                                      style={{
+                                        color: "var(--text-muted)",
+                                        display: "block",
+                                        marginBottom: "0.25rem",
+                                      }}
+                                    >
+                                      Affected Element
+                                    </span>
+                                    <code
+                                      style={{
+                                        background: "rgba(255,255,255,0.05)",
+                                        padding: "0.25rem 0.5rem",
+                                        borderRadius: "4px",
+                                      }}
+                                    >
+                                      {bug.element_selector || "N/A"}
+                                    </code>
+                                  </div>
+                                  {bug.suggested_fix && (
+                                    <div
+                                      style={{
+                                        gridColumn: "span 2",
+                                        marginTop: "0.5rem",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          color: "var(--accent-primary)",
+                                          display: "block",
+                                          marginBottom: "0.5rem",
+                                          fontWeight: 500,
+                                        }}
+                                      >
+                                        AI Suggested Fix
+                                      </span>
+                                      <pre>{bug.suggested_fix}</pre>
+
+                                      <div
+                                        style={{
+                                          marginTop: "1rem",
+                                          display: "flex",
+                                          gap: "0.75rem",
+                                          alignItems: "center",
+                                        }}
+                                      >
+                                        {bugStatuses[bug.id] ? (
+                                          <div
+                                            style={{
+                                              color:
+                                                bugStatuses[bug.id].status ===
+                                                  "approved"
+                                                  ? "var(--success)"
+                                                  : "var(--error)",
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "0.5rem",
+                                            }}
+                                          >
+                                            {bugStatuses[bug.id].status ===
+                                              "approved" ? (
+                                              <CheckCircle size={16} />
+                                            ) : (
+                                              <XCircle size={16} />
+                                            )}
+                                            <span
+                                              style={{
+                                                textTransform: "capitalize",
+                                              }}
+                                            >
+                                              Fix {bugStatuses[bug.id].status}
+                                            </span>
+                                            {bugStatuses[bug.id].prUrl && (
+                                              <a
+                                                href={bugStatuses[bug.id].prUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{
+                                                  marginLeft: "1rem",
+                                                  color: "var(--accent-primary)",
+                                                  textDecoration: "underline",
+                                                }}
+                                              >
+                                                View Pull Request
+                                              </a>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <button
+                                              className="btn btn-primary"
+                                              onClick={() =>
+                                                handleBugAction(bug.id, "approve")
+                                              }
+                                              disabled={actioningBug === bug.id}
+                                              style={{
+                                                padding: "0.5rem 1rem",
+                                                fontSize: "0.875rem",
+                                              }}
+                                            >
+                                              {actioningBug === bug.id
+                                                ? "Processing..."
+                                                : "Approve Fix (Create PR)"}
+                                            </button>
+                                            <button
+                                              className="btn"
+                                              onClick={() =>
+                                                handleBugAction(bug.id, "reject")
+                                              }
+                                              disabled={actioningBug === bug.id}
+                                              style={{
+                                                padding: "0.5rem 1rem",
+                                                fontSize: "0.875rem",
+                                                background:
+                                                  "rgba(255,255,255,0.05)",
+                                              }}
+                                            >
+                                              Reject
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {bug.verification_status && (
+                                    <div
+                                      className="card"
+                                      style={{
+                                        gridColumn: "span 2",
+                                        marginTop: "1.5rem",
+                                        background: "rgba(0,0,0,0.4)",
+                                        borderRadius: "12px",
+                                      }}
+                                    >
+                                      <h5
+                                        style={{
+                                          marginBottom: "1.5rem",
+                                          color: "var(--text-primary)",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "0.75rem",
+                                          fontSize: "1.1rem",
+                                        }}
+                                      >
+                                        <Activity
+                                          size={20}
+                                          className="text-accent"
+                                        />
+                                        Visual Verification
+                                      </h5>
+                                      <VisualDiffSlider
+                                        beforeUrl={resolveScreenshotUrl(bug.screenshot_path)}
+                                        afterUrl={resolveScreenshotUrl(bug.verification_screenshot_path)}
+                                        bug={bug}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
                     </div>
-
-                    {downloadSuccessMsg && (
-                      <div
-                        style={{
-                          marginTop: "1rem",
-                          padding: "0.85rem 1.25rem",
-                          background: "rgba(16, 185, 129, 0.15)",
-                          border: "1px solid #10b981",
-                          borderRadius: "8px",
-                          color: "#6ee7b7",
-                          fontSize: "0.9rem",
-                          fontWeight: "500",
-                        }}
-                      >
-                        {downloadSuccessMsg}
-                      </div>
-                    )}
-
-                    {showNotepadCode && (
-                      <div
-                        className="glass-panel"
-                        style={{
-                          marginTop: "1.5rem",
-                          padding: "1.5rem",
-                          background: "#020617",
-                          border: "1px solid #38bdf8",
-                          borderRadius: "10px",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "1rem",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                            <FileText size={20} color="#38bdf8" />
-                            <h4 style={{ margin: 0, color: "#f8fafc", fontSize: "1.05rem" }}>
-                              Notepad Code Viewer — fixed_code.txt
-                            </h4>
-                          </div>
-                          <div style={{ display: "flex", gap: "0.5rem" }}>
-                            <button
-                              className="btn"
-                              style={{
-                                padding: "0.4rem 0.8rem",
-                                background: copySuccess ? "#10b981" : "#1e293b",
-                                color: "#fff",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.4rem",
-                                cursor: "pointer",
-                                borderRadius: "6px",
-                                border: "1px solid #475569",
-                                fontSize: "0.85rem",
-                              }}
-                              onClick={handleCopyNotepadCode}
-                            >
-                              {copySuccess ? <Check size={14} /> : <Copy size={14} />}
-                              {copySuccess ? "Copied!" : "Copy Notepad Code"}
-                            </button>
-                            <a
-                              href={`${API_BASE}/scans/${runDetails.run_id}/fixed_code.txt`}
-                              download="fixed_code.txt"
-                              className="btn"
-                              style={{
-                                padding: "0.4rem 0.8rem",
-                                background: "#059669",
-                                color: "#fff",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.4rem",
-                                cursor: "pointer",
-                                borderRadius: "6px",
-                                border: "none",
-                                fontSize: "0.85rem",
-                                textDecoration: "none",
-                              }}
-                              onClick={() => {
-                                setDownloadSuccessMsg("✅ Downloaded 'fixed_code.txt'! Double-click in Downloads to open in Windows Notepad.");
-                                setTimeout(() => setDownloadSuccessMsg(""), 6000);
-                              }}
-                            >
-                              <Download size={14} />
-                              Save as .txt
-                            </a>
-                          </div>
-                        </div>
-                        <textarea
-                          readOnly
-                          value={notepadContent || "Loading fixed code in Notepad format..."}
-                          rows={14}
-                          style={{
-                            width: "100%",
-                            background: "#090d16",
-                            color: "#e2e8f0",
-                            border: "1px solid #1e293b",
-                            borderRadius: "6px",
-                            padding: "1rem",
-                            fontFamily: "Consolas, 'Courier New', monospace",
-                            fontSize: "0.85rem",
-                            lineHeight: "1.5",
-                            resize: "vertical",
-                            boxSizing: "border-box",
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: "2rem" }}>
-                      <h3 style={{ marginBottom: "1rem" }}>Detected Issues</h3>
-                      {runDetails.status === "RUNNING" || runDetails.status === "running" ? (
-                        <div
-                          className="glass-panel"
-                          style={{
-                            padding: "2rem",
-                            textAlign: "center",
-                            color: "var(--text-muted)",
-                          }}
-                        >
-                          <Activity
-                            className="animate-spin"
-                            size={48}
-                            style={{ margin: "0 auto 1rem", color: "var(--accent-primary)" }}
-                          />
-                          <p>Analyzing UI for bugs...</p>
-                        </div>
-                      ) : runDetails.bugs.length === 0 ? (
-                        <div
-                          className="glass-panel"
-                          style={{
-                            padding: "2rem",
-                            textAlign: "center",
-                            color: "var(--success)",
-                          }}
-                        >
-                          <CheckCircle
-                            size={48}
-                            style={{ margin: "0 auto 1rem" }}
-                          />
-                          <p>No UI bugs detected in this scan!</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1">
-                          {runDetails.bugs.map((bug, index) => (
-                            <div
-                              key={bug.id}
-                              className="glass-panel animate-fade-in"
-                              style={{
-                                padding: "1.5rem",
-                                animationDelay: `${index * 100}ms`,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "flex-start",
-                                  marginBottom: "1rem",
-                                }}
-                              >
-                                <h4
-                                  style={{
-                                    fontSize: "1.125rem",
-                                    color: "var(--text-primary)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    flexWrap: "wrap",
-                                    gap: "0.5rem",
-                                  }}
-                                >
-                                  {bug.title}
-                                  {bug.verification_status ===
-                                    "verified_fixed" && (
-                                    <span
-                                      className="badge"
-                                      style={{
-                                        background: "rgba(16, 185, 129, 0.15)",
-                                        color: "#6ee7b7",
-                                        border:
-                                          "1px solid rgba(16, 185, 129, 0.3)",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "4px",
-                                      }}
-                                    >
-                                      <CheckCircle size={12} /> Verified Fixed
-                                    </span>
-                                  )}
-                                  {bug.verification_status ===
-                                    "still_broken" && (
-                                    <span
-                                      className="badge"
-                                      style={{
-                                        background: "rgba(239, 68, 68, 0.15)",
-                                        color: "#fca5a5",
-                                        border:
-                                          "1px solid rgba(239, 68, 68, 0.3)",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "4px",
-                                      }}
-                                    >
-                                      <XCircle size={12} /> Still Broken
-                                    </span>
-                                  )}
-                                </h4>
-                                <span className={`badge badge-${bug.severity}`}>
-                                  {bug.severity}
-                                </span>
-                              </div>
-
-                              <p
-                                style={{
-                                  color: "var(--text-secondary)",
-                                  marginBottom: "1rem",
-                                }}
-                              >
-                                {bug.description}
-                              </p>
-
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "1fr 1fr",
-                                  gap: "1rem",
-                                  fontSize: "0.875rem",
-                                }}
-                              >
-                                <div>
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      display: "block",
-                                      marginBottom: "0.25rem",
-                                    }}
-                                  >
-                                    Category
-                                  </span>
-                                  <span style={{ textTransform: "capitalize" }}>
-                                    {bug.category}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      display: "block",
-                                      marginBottom: "0.25rem",
-                                    }}
-                                  >
-                                    Viewport
-                                  </span>
-                                  <span style={{ textTransform: "capitalize" }}>
-                                    {bug.viewport}
-                                  </span>
-                                </div>
-                                <div style={{ gridColumn: "span 2" }}>
-                                  <span
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      display: "block",
-                                      marginBottom: "0.25rem",
-                                    }}
-                                  >
-                                    Affected Element
-                                  </span>
-                                  <code
-                                    style={{
-                                      background: "rgba(255,255,255,0.05)",
-                                      padding: "0.25rem 0.5rem",
-                                      borderRadius: "4px",
-                                    }}
-                                  >
-                                    {bug.element_selector || "N/A"}
-                                  </code>
-                                </div>
-                                {bug.suggested_fix && (
-                                  <div
-                                    style={{
-                                      gridColumn: "span 2",
-                                      marginTop: "0.5rem",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "var(--accent-primary)",
-                                        display: "block",
-                                        marginBottom: "0.5rem",
-                                        fontWeight: 500,
-                                      }}
-                                    >
-                                      AI Suggested Fix
-                                    </span>
-                                    <pre>{bug.suggested_fix}</pre>
-
-                                    <div
-                                      style={{
-                                        marginTop: "1rem",
-                                        display: "flex",
-                                        gap: "0.75rem",
-                                        alignItems: "center",
-                                      }}
-                                    >
-                                      {bugStatuses[bug.id] ? (
-                                        <div
-                                          style={{
-                                            color:
-                                              bugStatuses[bug.id].status ===
-                                              "approved"
-                                                ? "var(--success)"
-                                                : "var(--error)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "0.5rem",
-                                          }}
-                                        >
-                                          {bugStatuses[bug.id].status ===
-                                          "approved" ? (
-                                            <CheckCircle size={16} />
-                                          ) : (
-                                            <XCircle size={16} />
-                                          )}
-                                          <span
-                                            style={{
-                                              textTransform: "capitalize",
-                                            }}
-                                          >
-                                            Fix {bugStatuses[bug.id].status}
-                                          </span>
-                                          {bugStatuses[bug.id].prUrl && (
-                                            <a
-                                              href={bugStatuses[bug.id].prUrl}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              style={{
-                                                marginLeft: "1rem",
-                                                color: "var(--accent-primary)",
-                                                textDecoration: "underline",
-                                              }}
-                                            >
-                                              View Pull Request
-                                            </a>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <button
-                                            className="btn btn-primary"
-                                            onClick={() =>
-                                              handleBugAction(bug.id, "approve")
-                                            }
-                                            disabled={actioningBug === bug.id}
-                                            style={{
-                                              padding: "0.5rem 1rem",
-                                              fontSize: "0.875rem",
-                                            }}
-                                          >
-                                            {actioningBug === bug.id
-                                              ? "Processing..."
-                                              : "Approve Fix (Create PR)"}
-                                          </button>
-                                          <button
-                                            className="btn"
-                                            onClick={() =>
-                                              handleBugAction(bug.id, "reject")
-                                            }
-                                            disabled={actioningBug === bug.id}
-                                            style={{
-                                              padding: "0.5rem 1rem",
-                                              fontSize: "0.875rem",
-                                              background:
-                                                "rgba(255,255,255,0.05)",
-                                            }}
-                                          >
-                                            Reject
-                                          </button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {bug.verification_status && (
-                                  <div
-                                    className="card"
-                                    style={{
-                                      gridColumn: "span 2",
-                                      marginTop: "1.5rem",
-                                      background: "rgba(0,0,0,0.4)",
-                                      borderRadius: "12px",
-                                    }}
-                                  >
-                                    <h5
-                                      style={{
-                                        marginBottom: "1.5rem",
-                                        color: "var(--text-primary)",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "0.75rem",
-                                        fontSize: "1.1rem",
-                                      }}
-                                    >
-                                      <Activity
-                                        size={20}
-                                        className="text-accent"
-                                      />
-                                      Visual Verification
-                                    </h5>
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "1fr 1fr",
-                                        gap: "2rem",
-                                      }}
-                                    >
-                                      <div style={{ position: "relative" }}>
-                                        <span
-                                          style={{
-                                            position: "absolute",
-                                            top: "10px",
-                                            left: "10px",
-                                            zIndex: 10,
-                                            background: "rgba(0,0,0,0.7)",
-                                            padding: "4px 12px",
-                                            borderRadius: "20px",
-                                            color: "white",
-                                            fontSize: "0.75rem",
-                                            backdropFilter: "blur(4px)",
-                                            border:
-                                              "1px solid rgba(255,255,255,0.1)",
-                                          }}
-                                        >
-                                          Original
-                                        </span>
-                                        {bug.screenshot_path ? (
-                                          <div
-                                            className="card"
-                                            style={{
-                                              padding: 0,
-                                              borderRadius: "12px",
-                                              overflow: "hidden",
-                                              background: "#000",
-                                              aspectRatio: "16/9",
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "center",
-                                            }}
-                                          >
-                                            <img
-                                              src={
-                                                bug.screenshot_path.startsWith(
-                                                  "http",
-                                                )
-                                                  ? bug.screenshot_path
-                                                  : `http://localhost:8000/${bug.screenshot_path}`
-                                              }
-                                              alt="Before"
-                                              style={{
-                                                width: "100%",
-                                                height: "100%",
-                                                objectFit: "cover",
-                                                opacity: 0.8,
-                                                transition:
-                                                  "opacity 0.3s, transform 0.5s",
-                                              }}
-                                              onMouseOver={(e) => {
-                                                e.currentTarget.style.opacity = 1;
-                                                e.currentTarget.style.transform =
-                                                  "scale(1.05)";
-                                              }}
-                                              onMouseOut={(e) => {
-                                                e.currentTarget.style.opacity = 0.8;
-                                                e.currentTarget.style.transform =
-                                                  "scale(1)";
-                                              }}
-                                              onError={(e) => {
-                                                e.target.style.display = "none";
-                                                e.target.nextSibling.style.display =
-                                                  "flex";
-                                              }}
-                                            />
-                                            <div
-                                              style={{
-                                                display: "none",
-                                                color: "var(--text-muted)",
-                                                fontSize: "0.875rem",
-                                                textAlign: "center",
-                                                padding: "1rem",
-                                              }}
-                                            >
-                                              Image path:
-                                              <br />
-                                              {bug.screenshot_path
-                                                .split(/[\\/]/)
-                                                .pop()}
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <div
-                                            style={{
-                                              background:
-                                                "rgba(255,255,255,0.02)",
-                                              padding: "2rem",
-                                              textAlign: "center",
-                                              borderRadius: "12px",
-                                            }}
-                                          >
-                                            N/A
-                                          </div>
-                                        )}
-                                      </div>
-                                      <div style={{ position: "relative" }}>
-                                        <span
-                                          style={{
-                                            position: "absolute",
-                                            top: "10px",
-                                            left: "10px",
-                                            zIndex: 10,
-                                            background:
-                                              "linear-gradient(135deg, var(--success), #047857)",
-                                            padding: "4px 12px",
-                                            borderRadius: "20px",
-                                            color: "white",
-                                            fontSize: "0.75rem",
-                                            backdropFilter: "blur(4px)",
-                                            border:
-                                              "1px solid rgba(255,255,255,0.2)",
-                                            boxShadow:
-                                              "0 4px 10px rgba(16, 185, 129, 0.4)",
-                                          }}
-                                        >
-                                          Fixed
-                                        </span>
-                                        {bug.verification_screenshot_path ? (
-                                          <div
-                                            className="card"
-                                            style={{
-                                              padding: 0,
-                                              borderRadius: "12px",
-                                              overflow: "hidden",
-                                              background: "#000",
-                                              aspectRatio: "16/9",
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "center",
-                                            }}
-                                          >
-                                            <img
-                                              src={
-                                                bug.verification_screenshot_path.startsWith(
-                                                  "http",
-                                                )
-                                                  ? bug.verification_screenshot_path
-                                                  : `http://localhost:8000/${bug.verification_screenshot_path}`
-                                              }
-                                              alt="After"
-                                              style={{
-                                                width: "100%",
-                                                height: "100%",
-                                                objectFit: "cover",
-                                                opacity: 0.8,
-                                                transition:
-                                                  "opacity 0.3s, transform 0.5s",
-                                              }}
-                                              onMouseOver={(e) => {
-                                                e.currentTarget.style.opacity = 1;
-                                                e.currentTarget.style.transform =
-                                                  "scale(1.05)";
-                                              }}
-                                              onMouseOut={(e) => {
-                                                e.currentTarget.style.opacity = 0.8;
-                                                e.currentTarget.style.transform =
-                                                  "scale(1)";
-                                              }}
-                                              onError={(e) => {
-                                                e.target.style.display = "none";
-                                                e.target.nextSibling.style.display =
-                                                  "flex";
-                                              }}
-                                            />
-                                            <div
-                                              style={{
-                                                display: "none",
-                                                color: "var(--text-muted)",
-                                                fontSize: "0.875rem",
-                                                textAlign: "center",
-                                                padding: "1rem",
-                                              }}
-                                            >
-                                              Image path:
-                                              <br />
-                                              {bug.verification_screenshot_path
-                                                .split(/[\\/]/)
-                                                .pop()}
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <div
-                                            style={{
-                                              background:
-                                                "rgba(255,255,255,0.02)",
-                                              padding: "2rem",
-                                              textAlign: "center",
-                                              borderRadius: "12px",
-                                            }}
-                                          >
-                                            N/A
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </main>
+                  )}
+                </div>
+              )}
+            </div>
+          </main>
         )}
       </div>
 

@@ -110,6 +110,91 @@ class Settings(BaseSettings):
                 import logging
                 logging.getLogger(__name__).warning(f"Could not persist to .env: {e}")
 
+    def update_settings(
+        self,
+        gemini_api_key: Optional[str] = None,
+        gemini_model: Optional[str] = None,
+        github_token: Optional[str] = None,
+        github_repo: Optional[str] = None,
+        staging_url: Optional[str] = None,
+    ) -> None:
+        """Update runtime configuration and persist changes to .env file."""
+        if gemini_api_key is not None:
+            self.gemini_api_key = gemini_api_key.strip()
+        if gemini_model is not None and gemini_model.strip():
+            self.gemini_model = gemini_model.strip()
+        if github_token is not None:
+            self.github_token = github_token.strip()
+        if github_repo is not None:
+            self.github_repo = github_repo.strip()
+        if staging_url is not None and staging_url.strip():
+            self.staging_url = staging_url.strip()
+
+        env_path = os.path.join(os.getcwd(), ".env")
+        if not os.path.exists(env_path):
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+        try:
+            lines = []
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+            keys_to_update = {
+                "GEMINI_API_KEY": self.gemini_api_key,
+                "GEMINI_MODEL": self.gemini_model,
+                "GITHUB_TOKEN": self.github_token,
+                "GITHUB_REPO": self.github_repo,
+                "STAGING_URL": self.staging_url,
+            }
+            written_keys = set()
+            new_lines = []
+            for line in lines:
+                matched = False
+                for k, v in keys_to_update.items():
+                    if line.startswith(f"{k}="):
+                        new_lines.append(f"{k}={v}\n")
+                        written_keys.add(k)
+                        matched = True
+                        break
+                if not matched:
+                    new_lines.append(line)
+
+            for k, v in keys_to_update.items():
+                if k not in written_keys and v:
+                    new_lines.append(f"{k}={v}\n")
+
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Could not persist settings to .env: {e}")
+
+    def clear_github_credentials(self) -> None:
+        """Clear GitHub credentials at runtime and persist to .env."""
+        self.github_token = ""
+        self.github_repo = ""
+        
+        env_path = os.path.join(os.getcwd(), ".env")
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                new_lines = []
+                for line in lines:
+                    if line.startswith("GITHUB_TOKEN="):
+                        new_lines.append("GITHUB_TOKEN=\n")
+                    elif line.startswith("GITHUB_REPO="):
+                        new_lines.append("GITHUB_REPO=\n")
+                    else:
+                        new_lines.append(line)
+                with open(env_path, "w", encoding="utf-8") as f:
+                    f.writelines(new_lines)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Could not persist clear to .env: {e}")
+
+
 
 @lru_cache
 def get_settings() -> Settings:

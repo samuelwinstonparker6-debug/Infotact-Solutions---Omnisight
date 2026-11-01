@@ -139,7 +139,7 @@ async def create_multi_bug_fix_pr(
     a structured Pull Request on GitHub resolving all detected issues.
     """
     settings = get_settings()
-    token = (github_token or settings.github_token or "").strip()
+    token = (github_token if github_token is not None else (settings.github_token or "")).strip()
     repo_name = (github_repo or resolve_repo_from_url(target_url) or settings.github_repo or "").strip()
 
     if not token or token == "ghp_your-github-token-here":
@@ -295,7 +295,7 @@ async def create_fix_pr(
     Also syncs the fix to local files if applicable.
     """
     settings = get_settings()
-    token = (github_token or settings.github_token or "").strip()
+    token = (github_token if github_token is not None else (settings.github_token or "")).strip()
     repo_name = (github_repo or (resolve_repo_from_url(target_url) if target_url else None) or settings.github_repo or "").strip()
 
     # Always ensure local file is patched as well so local target servers reflect changes immediately
@@ -388,7 +388,7 @@ async def sync_merged_pr_changes(
     """
     import requests
     settings = get_settings()
-    token = (github_token or settings.github_token or "").strip()
+    token = (github_token if github_token is not None else (settings.github_token or "")).strip()
 
     if not pr_url:
         return {"status": "error", "message": "No Pull Request URL associated with this run."}

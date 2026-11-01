@@ -3,9 +3,16 @@ node_modules
 output
 data
 __pycache__
-*.db
+*.db*
 *.sqlite3
 .venv
 dist
 *.log
+.pytest_cache/
+*.zip
+check_models.py
+check.py
+scratch_test_injected.py
+test_vlm*.py
+test.txt
 

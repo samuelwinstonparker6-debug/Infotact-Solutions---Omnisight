@@ -1,16 +1,87 @@
 {
+  "version": "2.0.0",
+  "target_url": "http://localhost:8000/mock-app/index.html",
+  "total_calibrated_bugs": 8,
   "bugs": [
     {
+      "id": "gt-01",
       "type": "checkout button overflow on mobile",
-      "description": "The checkout button is fixed at 400px width causing it to overflow on mobile screens."
+      "category": "responsive",
+      "severity": "critical",
+      "viewport": "mobile",
+      "element_selector": ".checkout-button",
+      "description": "The checkout button is fixed at 500px width causing it to overflow on mobile screens.",
+      "expected_fix": "width: 100%; max-width: 24rem;"
     },
     {
+      "id": "gt-02",
       "type": "hero text contrast",
-      "description": "The hero text lacks contrast against its background."
+      "category": "contrast",
+      "severity": "high",
+      "viewport": "all",
+      "element_selector": ".hero-text",
+      "description": "The hero text lacks contrast against its background with white text on light gray background.",
+      "expected_fix": "color: #111827;"
     },
     {
+      "id": "gt-03",
+      "type": "hero subtext contrast",
+      "category": "contrast",
+      "severity": "high",
+      "viewport": "all",
+      "element_selector": ".hero-subtext",
+      "description": "The hero subtext has extremely poor contrast on light background.",
+      "expected_fix": "color: #4b5563;"
+    },
+    {
+      "id": "gt-04",
+      "type": "invisible link contrast",
+      "category": "contrast",
+      "severity": "medium",
+      "viewport": "all",
+      "element_selector": ".invisible-link",
+      "description": "Promotional link text uses same color as hero background making it invisible.",
+      "expected_fix": "color: #2563eb; text-decoration: underline;"
+    },
+    {
+      "id": "gt-05",
       "type": "price overlap",
-      "description": "The price overlaps the image due to top: -20px absolute positioning."
+      "category": "layout",
+      "severity": "high",
+      "viewport": "all",
+      "element_selector": ".price-container",
+      "description": "The price overlaps the image due to top: -20px absolute positioning.",
+      "expected_fix": "position: static; margin-bottom: 0.5rem;"
+    },
+    {
+      "id": "gt-06",
+      "type": "mobile header navigation collision",
+      "category": "responsive",
+      "severity": "high",
+      "viewport": "mobile",
+      "element_selector": ".header",
+      "description": "Mobile header layout keeps horizontal row causing navigation links to collide and overlap.",
+      "expected_fix": "flex-direction: column; gap: 0.5rem;"
+    },
+    {
+      "id": "gt-07",
+      "type": "touch target spacing on mobile navigation",
+      "category": "accessibility",
+      "severity": "medium",
+      "viewport": "mobile",
+      "element_selector": ".nav a",
+      "description": "Mobile navigation links are spaced too closely violating touch target accessibility.",
+      "expected_fix": "padding: 0.5rem 0.75rem; margin: 0 0.25rem;"
+    },
+    {
+      "id": "gt-08",
+      "type": "floating checkout bar stacking and z-index",
+      "category": "layout",
+      "severity": "medium",
+      "viewport": "all",
+      "element_selector": ".floating-checkout-bar",
+      "description": "Fixed bottom checkout bar lacks explicit z-index layer causing it to clip behind overlapping content.",
+      "expected_fix": "z-index: 50;"
     }
   ]
 }

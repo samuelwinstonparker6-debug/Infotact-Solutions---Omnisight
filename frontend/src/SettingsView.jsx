@@ -1,43 +1,204 @@
-import { useState } from "react";
-import { Sun, Moon, Palette, CheckCircle2, Trash2, RefreshCw, Zap, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Sun,
+  Moon,
+  Palette,
+  CheckCircle2,
+  Trash2,
+  RefreshCw,
+  Zap,
+  AlertCircle,
+  Cpu,
+  Key,
+  GitBranch,
+  Globe,
+  Save,
+  Check,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+} from "lucide-react";
 
 const API_BASE = typeof window !== "undefined" && (window.location.port === "5173" || window.location.port === "8000")
   ? "/api/v1"
   : "http://127.0.0.1:8000/api/v1";
 
+const DEFAULT_MODELS = [
+  {
+    id: "gemini-2.5-flash",
+    name: "Google Gemini 2.5 Flash",
+    description: "Ultra-fast multimodal vision with sub-second token latency.",
+    badge: "Fastest (Sub-10s)",
+    cost: "$ / Low Cost",
+  },
+  {
+    id: "gemini-3.8-flash",
+    name: "Google Gemini 3.8 Flash (High)",
+    description: "State-of-the-art vision reasoning with enhanced spatial accuracy.",
+    badge: "Recommended",
+    cost: "$$ / High Accuracy",
+  },
+  {
+    id: "gemini-1.5-pro",
+    name: "Google Gemini 1.5 Pro",
+    description: "Deep multi-turn visual critique and complex layout repair.",
+    badge: "Deep Reasoning",
+    cost: "$$$ / Heavy Token",
+  },
+  {
+    id: "gpt-4o",
+    name: "OpenAI GPT-4o Vision",
+    description: "Multi-provider high precision layout and visual defect detection.",
+    badge: "Alternative VLM",
+    cost: "$$$ / External",
+  },
+];
+
 export default function SettingsView({ theme, onThemeChange }) {
   const isDark = theme === "dark";
+
+  // System settings state
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [selectedModel, setSelectedModel] = useState("gemini-3.8-flash");
+  const [availableModels, setAvailableModels] = useState(DEFAULT_MODELS);
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [geminiMasked, setGeminiMasked] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+
+  const [githubToken, setGithubToken] = useState(() => localStorage.getItem("omnisight_github_token") || "");
+  const [githubRepo, setGithubRepo] = useState(() => localStorage.getItem("omnisight_github_repo") || "");
+  const [githubConfigured, setGithubConfigured] = useState(false);
+  const [showGithubToken, setShowGithubToken] = useState(false);
+
+  const [stagingUrl, setStagingUrl] = useState(() => localStorage.getItem("omnisight_target_url") || "http://localhost:8000/mock-app/index.html");
+
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(null);
+
+  // Cache clearing state
   const [clearing, setClearing] = useState(false);
   const [clearResult, setClearResult] = useState(null);
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    setLoadingSettings(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.available_models && data.available_models.length > 0) {
+          setAvailableModels(data.available_models);
+        }
+        if (data.gemini_model) {
+          setSelectedModel(data.gemini_model);
+        }
+        setGeminiConfigured(Boolean(data.gemini_configured));
+        setGeminiMasked(data.gemini_key_masked || "");
+        setGithubConfigured(Boolean(data.github_configured));
+        if (data.github_repo) setGithubRepo(data.github_repo);
+        if (data.staging_url) setStagingUrl(data.staging_url);
+      }
+    } catch {
+      // Fallback gracefully on local storage
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  const handleSaveSettings = async (overrideModel = null) => {
+    setSavingSettings(true);
+    setSaveSuccess(null);
+    const modelToSave = overrideModel || selectedModel;
+
+    const payload = {
+      gemini_model: modelToSave,
+      staging_url: stagingUrl.trim(),
+    };
+    if (geminiApiKey.trim()) {
+      payload.gemini_api_key = geminiApiKey.trim();
+    }
+    if (githubToken.trim()) {
+      payload.github_token = githubToken.trim();
+    }
+    if (githubRepo.trim()) {
+      payload.github_repo = githubRepo.trim();
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setGeminiConfigured(Boolean(data.gemini_configured));
+        if (data.gemini_key_masked) setGeminiMasked(data.gemini_key_masked);
+        setGithubConfigured(Boolean(data.github_configured));
+
+        // Sync with browser localStorage for App.jsx
+        if (githubToken.trim()) localStorage.setItem("omnisight_github_token", githubToken.trim());
+        if (githubRepo.trim()) localStorage.setItem("omnisight_github_repo", githubRepo.trim());
+        if (stagingUrl.trim()) localStorage.setItem("omnisight_target_url", stagingUrl.trim());
+
+        setSaveSuccess({
+          success: true,
+          message: overrideModel
+            ? `Active VLM model switched to ${modelToSave}!`
+            : "System credentials & configuration successfully updated!",
+        });
+      } else {
+        setSaveSuccess({
+          success: false,
+          message: data.detail || "Failed to update system settings.",
+        });
+      }
+    } catch (err) {
+      setSaveSuccess({
+        success: false,
+        message: err.message || "Network error while saving settings.",
+      });
+    } finally {
+      setSavingSettings(false);
+      setTimeout(() => setSaveSuccess(null), 4000);
+    }
+  };
+
+  const handleModelSelect = (modelId) => {
+    setSelectedModel(modelId);
+    handleSaveSettings(modelId);
+  };
 
   const handleClearCache = async () => {
     if (clearing) return;
     setClearing(true);
     setClearResult(null);
     try {
-      // 1. Call backend cache purge
       const res = await fetch(`${API_BASE}/system/clear-cache`, {
         method: "POST",
       });
       const data = await res.json();
 
-      // 2. Clear browser performance entries & sessionStorage
       if (typeof window !== "undefined") {
         try {
           if (window.performance && window.performance.clearResourceTimings) {
             window.performance.clearResourceTimings();
           }
           sessionStorage.clear();
-          // Clean legacy temp items from localStorage if any, keeping essential configs
-          const targetUrl = localStorage.getItem("omnisight_target_url");
+          const targetUrlVal = localStorage.getItem("omnisight_target_url");
           const savedTheme = localStorage.getItem("omnisight_theme");
           const ghToken = localStorage.getItem("omnisight_github_token");
-          const ghRepo = localStorage.getItem("omnisight_github_repo");
+          const ghRepoVal = localStorage.getItem("omnisight_github_repo");
           localStorage.clear();
-          if (targetUrl) localStorage.setItem("omnisight_target_url", targetUrl);
+          if (targetUrlVal) localStorage.setItem("omnisight_target_url", targetUrlVal);
           if (savedTheme) localStorage.setItem("omnisight_theme", savedTheme);
           if (ghToken) localStorage.setItem("omnisight_github_token", ghToken);
-          if (ghRepo) localStorage.setItem("omnisight_github_repo", ghRepo);
+          if (ghRepoVal) localStorage.setItem("omnisight_github_repo", ghRepoVal);
         } catch {
           // ignore storage clearing limitations
         }
@@ -60,8 +221,8 @@ export default function SettingsView({ theme, onThemeChange }) {
   };
 
   return (
-    <div style={{ maxWidth: "960px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "2rem" }}>
-      {/* Header Banner */}
+    <div style={{ maxWidth: "1000px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "2rem" }}>
+      {/* ── Page Header Banner ── */}
       <div
         className="glass-panel"
         style={{
@@ -83,44 +244,174 @@ export default function SettingsView({ theme, onThemeChange }) {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: "36px",
-                height: "36px",
+                width: "38px",
+                height: "38px",
                 borderRadius: "10px",
                 background: "rgba(99, 102, 241, 0.2)",
                 color: "var(--accent-primary)",
               }}
             >
-              <Palette size={20} />
+              <Cpu size={22} />
             </span>
             <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>
-              Appearance & Environment
+              OmniSight System Settings & Models
             </h2>
           </div>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.92rem", maxWidth: "560px" }}>
-            Customize the look and visual theme of the entire OmniSight console. Switches instantly across all views.
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.92rem", maxWidth: "600px" }}>
+            Configure active Vision-Language Models, API credentials, target deployment repositories, and UI visual preferences.
           </p>
         </div>
 
-        <div
-          style={{
-            padding: "0.5rem 1rem",
-            borderRadius: "9999px",
-            background: isDark ? "rgba(99, 102, 241, 0.15)" : "rgba(245, 158, 11, 0.15)",
-            border: `1px solid ${isDark ? "rgba(99, 102, 241, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
-            color: isDark ? "#818cf8" : "#d97706",
-            fontSize: "0.82rem",
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: "0.45rem",
-          }}
-        >
-          {isDark ? <Moon size={14} /> : <Sun size={14} />}
-          <span>{isDark ? "Dark Theme Active" : "Light Theme Active"}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "flex-end" }}>
+          <div
+            style={{
+              padding: "0.45rem 0.9rem",
+              borderRadius: "9999px",
+              background: geminiConfigured ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+              border: `1px solid ${geminiConfigured ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+              color: geminiConfigured ? "#34d399" : "#f87171",
+              fontSize: "0.8rem",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
+            {geminiConfigured ? <ShieldCheck size={14} /> : <AlertCircle size={14} />}
+            <span>{geminiConfigured ? "Gemini VLM Active" : "Gemini Key Missing"}</span>
+          </div>
         </div>
       </div>
 
-      {/* Main Theme Control Card */}
+      {/* ── Save Notification Toast ── */}
+      {saveSuccess && (
+        <div
+          className="animate-fade-in"
+          style={{
+            padding: "1rem 1.5rem",
+            borderRadius: "12px",
+            fontSize: "0.88rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            background: saveSuccess.success ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+            border: `1px solid ${saveSuccess.success ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.35)"}`,
+            color: saveSuccess.success ? "#34d399" : "#f87171",
+          }}
+        >
+          {saveSuccess.success ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+          <span style={{ fontWeight: 500 }}>{saveSuccess.message}</span>
+        </div>
+      )}
+
+      {/* ── VLM Model Selector Section (Day 13 Requirement) ── */}
+      <div
+        className="glass-panel"
+        style={{
+          padding: "2.25rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1.5rem",
+          borderRadius: "16px",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", marginBottom: "0.35rem" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "rgba(99, 102, 241, 0.15)",
+                  color: "var(--accent-primary)",
+                }}
+              >
+                <Cpu size={18} />
+              </span>
+              <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)" }}>
+                Vision-Language Model (VLM) Selector
+              </h3>
+            </div>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem", maxWidth: "620px" }}>
+              Choose the multimodal vision intelligence engine that inspects multi-viewport screenshots and synthesizes self-healing CSS fixes.
+            </p>
+          </div>
+          <span
+            style={{
+              padding: "0.35rem 0.85rem",
+              borderRadius: "9999px",
+              background: "rgba(99, 102, 241, 0.15)",
+              color: "var(--accent-primary)",
+              fontWeight: 600,
+              fontSize: "0.78rem",
+            }}
+          >
+            ACTIVE: {selectedModel}
+          </span>
+        </div>
+
+        {/* Model Selection Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+          {availableModels.map((m) => {
+            const isSelected = selectedModel === m.id;
+            return (
+              <div
+                key={m.id}
+                onClick={() => handleModelSelect(m.id)}
+                style={{
+                  cursor: "pointer",
+                  padding: "1.25rem",
+                  borderRadius: "12px",
+                  background: isSelected
+                    ? isDark ? "rgba(99, 102, 241, 0.15)" : "rgba(99, 102, 241, 0.08)"
+                    : isDark ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.02)",
+                  border: isSelected ? "2px solid var(--accent-primary)" : "1px solid var(--border-glass)",
+                  boxShadow: isSelected ? "0 0 16px rgba(99, 102, 241, 0.25)" : "none",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.65rem",
+                  transition: "all 0.2s ease",
+                  position: "relative",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span
+                    style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      padding: "0.15rem 0.55rem",
+                      borderRadius: "6px",
+                      background: isSelected ? "var(--accent-primary)" : "rgba(255,255,255,0.08)",
+                      color: isSelected ? "#ffffff" : "var(--text-muted)",
+                    }}
+                  >
+                    {m.badge || "VLM"}
+                  </span>
+                  {isSelected && <CheckCircle2 size={16} color="var(--accent-primary)" />}
+                </div>
+
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-primary)" }}>
+                  {m.name}
+                </div>
+
+                <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", lineHeight: 1.4, flexGrow: 1 }}>
+                  {m.description}
+                </div>
+
+                <div style={{ paddingTop: "0.5rem", borderTop: "1px solid var(--border-glass)", fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>
+                  {m.cost || "Standard Tier"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── API Credentials & Integration Management Card ── */}
       <div
         className="glass-panel"
         style={{
@@ -132,15 +423,243 @@ export default function SettingsView({ theme, onThemeChange }) {
         }}
       >
         <div>
-          <h3 style={{ fontSize: "1.2rem", fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.35rem" }}>
-            Theme Mode
-          </h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            Choose between Light mode and Dark mode. Toggle animates seamlessly with instantaneous rendering.
+          <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", marginBottom: "0.35rem" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                background: "rgba(16, 185, 129, 0.15)",
+                color: "#10b981",
+              }}
+            >
+              <Key size={18} />
+            </span>
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)" }}>
+              API Credentials & Repository Integration
+            </h3>
+          </div>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem" }}>
+            Credentials are securely persisted directly to the backend <code style={{ color: "var(--accent-primary)" }}>.env</code> file.
           </p>
         </div>
 
-        {/* ── Interactive Drawing Toggle Bar ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.5rem" }}>
+          {/* Gemini API Key */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)", display: "flex", justifyContent: "space-between" }}>
+              <span>Google Gemini API Key</span>
+              {geminiConfigured && (
+                <span style={{ fontSize: "0.75rem", color: "#34d399", fontWeight: 500 }}>
+                  Active ({geminiMasked})
+                </span>
+              )}
+            </label>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <input
+                type={showGeminiKey ? "text" : "password"}
+                value={geminiApiKey}
+                onChange={(e) => setGeminiApiKey(e.target.value)}
+                placeholder={geminiConfigured ? "Update API Key (AIza...)" : "Enter Gemini API Key..."}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 2.8rem 0.75rem 1rem",
+                  borderRadius: "10px",
+                  background: isDark ? "rgba(0, 0, 0, 0.3)" : "#ffffff",
+                  border: "1px solid var(--border-glass)",
+                  color: "var(--text-primary)",
+                  fontSize: "0.88rem",
+                  outline: "none",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowGeminiKey(!showGeminiKey)}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {showGeminiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              Powers multi-viewport layout analysis and Tailwind CSS synthesis.
+            </span>
+          </div>
+
+          {/* GitHub Access Token */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)", display: "flex", justifyContent: "space-between" }}>
+              <span>GitHub Personal Access Token (PAT)</span>
+              {githubConfigured && (
+                <span style={{ fontSize: "0.75rem", color: "#34d399", fontWeight: 500 }}>
+                  Configured
+                </span>
+              )}
+            </label>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <input
+                type={showGithubToken ? "text" : "password"}
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                placeholder="ghp_yourPersonalAccessToken..."
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 2.8rem 0.75rem 1rem",
+                  borderRadius: "10px",
+                  background: isDark ? "rgba(0, 0, 0, 0.3)" : "#ffffff",
+                  border: "1px solid var(--border-glass)",
+                  color: "var(--text-primary)",
+                  fontSize: "0.88rem",
+                  outline: "none",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowGithubToken(!showGithubToken)}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {showGithubToken ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              Requires <code style={{ color: "var(--accent-primary)" }}>repo</code> scope to create branches and publish Pull Requests.
+            </span>
+          </div>
+
+          {/* GitHub Target Repository */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <GitBranch size={15} />
+              <span>Default GitHub Target Repo</span>
+            </label>
+            <input
+              type="text"
+              value={githubRepo}
+              onChange={(e) => setGithubRepo(e.target.value)}
+              placeholder="e.g. samuelwinstonparker6-debug/omnisight"
+              style={{
+                width: "100%",
+                padding: "0.75rem 1rem",
+                borderRadius: "10px",
+                background: isDark ? "rgba(0, 0, 0, 0.3)" : "#ffffff",
+                border: "1px solid var(--border-glass)",
+                color: "var(--text-primary)",
+                fontSize: "0.88rem",
+                outline: "none",
+              }}
+            />
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              Format: <code style={{ color: "var(--text-secondary)" }}>owner/repository</code>
+            </span>
+          </div>
+
+          {/* Default Staging URL */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Globe size={15} />
+              <span>Default Target Staging URL</span>
+            </label>
+            <input
+              type="text"
+              value={stagingUrl}
+              onChange={(e) => setStagingUrl(e.target.value)}
+              placeholder="http://localhost:8000/mock-app/index.html"
+              style={{
+                width: "100%",
+                padding: "0.75rem 1rem",
+                borderRadius: "10px",
+                background: isDark ? "rgba(0, 0, 0, 0.3)" : "#ffffff",
+                border: "1px solid var(--border-glass)",
+                color: "var(--text-primary)",
+                fontSize: "0.88rem",
+                outline: "none",
+              }}
+            />
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              The URL loaded by default in dashboard scans and testbench runs.
+            </span>
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: "0.5rem" }}>
+          <button
+            onClick={() => handleSaveSettings()}
+            disabled={savingSettings}
+            className="btn"
+            style={{
+              padding: "0.75rem 1.75rem",
+              borderRadius: "10px",
+              background: "linear-gradient(135deg, #6366f1, #4f46e5)",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: "0.9rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              cursor: savingSettings ? "not-allowed" : "pointer",
+              boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)",
+              border: "none",
+            }}
+          >
+            {savingSettings ? <RefreshCw size={17} className="animate-spin" /> : <Save size={17} />}
+            <span>Save Configuration</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Theme Mode Card ── */}
+      <div
+        className="glass-panel"
+        style={{
+          padding: "2.25rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1.75rem",
+          borderRadius: "16px",
+        }}
+      >
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", marginBottom: "0.35rem" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                background: "rgba(245, 158, 11, 0.15)",
+                color: "#f59e0b",
+              }}
+            >
+              <Palette size={18} />
+            </span>
+            <h3 style={{ fontSize: "1.2rem", fontWeight: 600, color: "var(--text-primary)" }}>
+              Appearance & Theme
+            </h3>
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+            Instantaneous theme switching across all dashboard views.
+          </p>
+        </div>
+
         <div
           style={{
             display: "flex",
@@ -155,7 +674,6 @@ export default function SettingsView({ theme, onThemeChange }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            {/* Mode labels & indicator */}
             <div
               onClick={() => onThemeChange("light")}
               style={{
@@ -175,7 +693,6 @@ export default function SettingsView({ theme, onThemeChange }) {
               <span>Light Mode</span>
             </div>
 
-            {/* ── Seamless Animated Drawing Toggle Switch ── */}
             <button
               type="button"
               role="switch"
@@ -194,37 +711,12 @@ export default function SettingsView({ theme, onThemeChange }) {
                 cursor: "pointer",
                 padding: 0,
                 outline: "none",
-                transition: "background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease",
+                transition: "all 0.25s ease",
                 boxShadow: isDark
                   ? "0 0 16px rgba(99, 102, 241, 0.4), inset 0 2px 4px rgba(0,0,0,0.5)"
                   : "0 0 16px rgba(245, 158, 11, 0.4), inset 0 2px 4px rgba(255,255,255,0.7)",
               }}
             >
-              {/* Background ambient stars (dark) / sunshine rays (light) */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  borderRadius: "9999px",
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                }}
-              >
-                {isDark ? (
-                  <>
-                    <span style={{ position: "absolute", top: "8px", left: "14px", width: "2px", height: "2px", background: "#fff", borderRadius: "50%", opacity: 0.8 }} />
-                    <span style={{ position: "absolute", bottom: "9px", left: "24px", width: "3px", height: "3px", background: "#cbd5e1", borderRadius: "50%", opacity: 0.9 }} />
-                    <span style={{ position: "absolute", top: "18px", left: "20px", width: "1.5px", height: "1.5px", background: "#e0e7ff", borderRadius: "50%", opacity: 0.6 }} />
-                  </>
-                ) : (
-                  <>
-                    <span style={{ position: "absolute", top: "10px", right: "18px", width: "3px", height: "3px", background: "#f59e0b", borderRadius: "50%", opacity: 0.7 }} />
-                    <span style={{ position: "absolute", bottom: "11px", right: "26px", width: "2.5px", height: "2.5px", background: "#d97706", borderRadius: "50%", opacity: 0.8 }} />
-                  </>
-                )}
-              </div>
-
-              {/* Moving circular thumb knob */}
               <div
                 style={{
                   position: "absolute",
@@ -240,18 +732,10 @@ export default function SettingsView({ theme, onThemeChange }) {
                   alignItems: "center",
                   justifyContent: "center",
                   color: "#ffffff",
-                  boxShadow: isDark
-                    ? "0 2px 8px rgba(0, 0, 0, 0.4), 0 0 10px rgba(99, 102, 241, 0.8)"
-                    : "0 2px 8px rgba(245, 158, 11, 0.4), 0 0 10px rgba(251, 191, 36, 0.8)",
-                  transition: "left 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s ease, transform 0.2s ease",
-                  transform: "scale(1)",
+                  transition: "left 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
                 }}
               >
-                {isDark ? (
-                  <Moon size={16} color="#ffffff" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))" }} />
-                ) : (
-                  <Sun size={17} color="#ffffff" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))" }} />
-                )}
+                {isDark ? <Moon size={16} /> : <Sun size={17} />}
               </div>
             </button>
 
@@ -272,135 +756,6 @@ export default function SettingsView({ theme, onThemeChange }) {
             >
               <Moon size={18} />
               <span>Dark Mode</span>
-            </div>
-          </div>
-
-          {/* Quick preset selector cards */}
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <button
-              onClick={() => onThemeChange("light")}
-              style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "8px",
-                border: !isDark ? "2px solid #f59e0b" : "1px solid var(--border-glass)",
-                background: !isDark ? "rgba(245, 158, 11, 0.1)" : "transparent",
-                color: !isDark ? "var(--text-primary)" : "var(--text-secondary)",
-                cursor: "pointer",
-                fontWeight: 500,
-                fontSize: "0.82rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Sun size={14} color={!isDark ? "#f59e0b" : "inherit"} />
-              Light
-              {!isDark && <CheckCircle2 size={13} color="#f59e0b" />}
-            </button>
-
-            <button
-              onClick={() => onThemeChange("dark")}
-              style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "8px",
-                border: isDark ? "2px solid var(--accent-primary)" : "1px solid var(--border-glass)",
-                background: isDark ? "rgba(99, 102, 241, 0.12)" : "transparent",
-                color: isDark ? "var(--text-primary)" : "var(--text-secondary)",
-                cursor: "pointer",
-                fontWeight: 500,
-                fontSize: "0.82rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <Moon size={14} color={isDark ? "var(--accent-primary)" : "inherit"} />
-              Dark
-              {isDark && <CheckCircle2 size={13} color="var(--accent-primary)" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Live Preview Comparison Cards */}
-        <div>
-          <h4 style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--text-primary)", marginBottom: "0.85rem" }}>
-            Visual Scheme Preview
-          </h4>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
-            {/* Light Mode Preview */}
-            <div
-              onClick={() => onThemeChange("light")}
-              style={{
-                cursor: "pointer",
-                padding: "1.25rem",
-                borderRadius: "12px",
-                background: "#f8fafc",
-                border: !isDark ? "2px solid #f59e0b" : "1px solid #e2e8f0",
-                boxShadow: !isDark ? "0 0 15px rgba(245, 158, 11, 0.3)" : "none",
-                transition: "all 0.2s ease",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.75rem",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 600, fontSize: "0.88rem", color: "#0f172a", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <Sun size={15} color="#f59e0b" />
-                  Daylight Crisp
-                </span>
-                {!isDark && (
-                  <span style={{ fontSize: "0.7rem", padding: "0.15rem 0.5rem", borderRadius: "9999px", background: "#fef3c7", color: "#b45309", fontWeight: 600 }}>
-                    ACTIVE
-                  </span>
-                )}
-              </div>
-              <div style={{ padding: "0.75rem", borderRadius: "8px", background: "#ffffff", border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                <div style={{ height: "8px", width: "60%", background: "#6366f1", borderRadius: "4px" }} />
-                <div style={{ height: "6px", width: "90%", background: "#cbd5e1", borderRadius: "3px" }} />
-                <div style={{ height: "6px", width: "75%", background: "#e2e8f0", borderRadius: "3px" }} />
-              </div>
-              <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                High readability in well-lit workspaces with crisp high-contrast surfaces.
-              </span>
-            </div>
-
-            {/* Dark Mode Preview */}
-            <div
-              onClick={() => onThemeChange("dark")}
-              style={{
-                cursor: "pointer",
-                padding: "1.25rem",
-                borderRadius: "12px",
-                background: "#0f111a",
-                border: isDark ? "2px solid var(--accent-primary)" : "1px solid rgba(255,255,255,0.08)",
-                boxShadow: isDark ? "0 0 15px rgba(99, 102, 241, 0.3)" : "none",
-                transition: "all 0.2s ease",
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.75rem",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 600, fontSize: "0.88rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <Moon size={15} color="#818cf8" />
-                  Midnight Cyber
-                </span>
-                {isDark && (
-                  <span style={{ fontSize: "0.7rem", padding: "0.15rem 0.5rem", borderRadius: "9999px", background: "rgba(99,102,241,0.2)", color: "#a5b4fc", fontWeight: 600 }}>
-                    ACTIVE
-                  </span>
-                )}
-              </div>
-              <div style={{ padding: "0.75rem", borderRadius: "8px", background: "#161925", border: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                <div style={{ height: "8px", width: "60%", background: "#6366f1", borderRadius: "4px" }} />
-                <div style={{ height: "6px", width: "90%", background: "rgba(255,255,255,0.15)", borderRadius: "3px" }} />
-                <div style={{ height: "6px", width: "75%", background: "rgba(255,255,255,0.08)", borderRadius: "3px" }} />
-              </div>
-              <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                Low eye strain with OLED obsidian tones, neon accents, and subtle glassmorphism.
-              </span>
             </div>
           </div>
         </div>
@@ -439,7 +794,7 @@ export default function SettingsView({ theme, onThemeChange }) {
               </h3>
             </div>
             <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", maxWidth: "620px" }}>
-              Purges temporary viewport screenshots, fixed code patches, server logs, browser resource timings, and Python bytecode caches. Accelerates scan execution and frees local disk space.
+              Purges temporary viewport screenshots, fixed code patches, server logs, browser resource timings, and Python bytecode caches.
             </p>
           </div>
 
@@ -462,7 +817,6 @@ export default function SettingsView({ theme, onThemeChange }) {
               gap: "0.5rem",
               cursor: clearing ? "not-allowed" : "pointer",
               transition: "all 0.2s ease",
-              boxShadow: "0 4px 12px rgba(239, 68, 68, 0.15)",
             }}
           >
             {clearing ? (
@@ -491,21 +845,13 @@ export default function SettingsView({ theme, onThemeChange }) {
               alignItems: "center",
               justifyContent: "space-between",
               gap: "1rem",
-              background: clearResult.success
-                ? "rgba(16, 185, 129, 0.12)"
-                : "rgba(239, 68, 68, 0.12)",
-              border: `1px solid ${
-                clearResult.success ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"
-              }`,
+              background: clearResult.success ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+              border: `1px solid ${clearResult.success ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
               color: clearResult.success ? "#34d399" : "#f87171",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              {clearResult.success ? (
-                <CheckCircle2 size={16} color="#34d399" />
-              ) : (
-                <AlertCircle size={16} color="#f87171" />
-              )}
+              {clearResult.success ? <CheckCircle2 size={16} color="#34d399" /> : <AlertCircle size={16} color="#f87171" />}
               <span>{clearResult.message}</span>
             </div>
 
@@ -517,7 +863,6 @@ export default function SettingsView({ theme, onThemeChange }) {
                   borderRadius: "9999px",
                   background: "rgba(16, 185, 129, 0.2)",
                   fontWeight: 600,
-                  whiteSpace: "nowrap",
                 }}
               >
                 Freed {clearResult.freedKb} KB ({clearResult.cleanedCount} items removed)

@@ -111,3 +111,21 @@ class GitHubConnectRequest(BaseModel):
     token: str = Field(..., description="GitHub Personal Access Token")
     repo: str = Field("", description="Optional owner/repo")
 
+
+class SettingsUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
+    github_token: Optional[str] = None
+    github_repo: Optional[str] = None
+    staging_url: Optional[str] = None
+
+
+class SettingsResponse(BaseModel):
+    gemini_configured: bool
+    gemini_model: str
+    gemini_key_masked: str
+    github_configured: bool
+    github_repo: str
+    staging_url: str
+    available_models: list[dict[str, str]]
+

@@ -7,6 +7,8 @@ async def client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
+from unittest.mock import patch
+
 @pytest.mark.asyncio
 async def test_webhook_trigger_success(client: AsyncClient):
     """Verifies that the CI/CD webhook accepts payloads and queues the agent."""
@@ -17,13 +19,14 @@ async def test_webhook_trigger_success(client: AsyncClient):
         "staging_url": "http://localhost:8000/mock-app/index.html"
     }
     
-    response = await client.post("/api/v1/webhook/ci-cd-trigger", json=payload)
-    
-    assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "accepted"
-    assert "job_id" in data
-    assert data["commit_sha"] == "abc123def456"
+    with patch("backend.api.webhook.run_pipeline"):
+        response = await client.post("/api/v1/webhook/ci-cd-trigger", json=payload)
+        
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "accepted"
+        assert "job_id" in data
+        assert data["commit_sha"] == "abc123def456"
 
 @pytest.mark.asyncio
 async def test_pr_creator_fallback():
@@ -34,6 +37,7 @@ async def test_pr_creator_fallback():
         file_path="mock-app/styles.css",
         fix_content=".checkout-button { width: 100%; }",
         bug_description="Checkout button overflows on mobile",
+        github_token="",
     )
     
     assert result["status"] == "success"

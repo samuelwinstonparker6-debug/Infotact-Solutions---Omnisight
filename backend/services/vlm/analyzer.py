@@ -81,6 +81,139 @@ def _resize_and_encode(image_path: str, max_w: int = SCREENSHOT_MAX_WIDTH, max_h
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Image Chunking & Cropping Algorithm (Week 4 Optimization)
+# ─────────────────────────────────────────────────────────────────────────────
+# Splits full-page screenshots into functional UI regions so the VLM
+# inspects each component at higher resolution with fewer tokens.
+# This dramatically improves defect localization accuracy.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def chunk_screenshot_into_regions(
+    image_path: str,
+    output_dir: Optional[str] = None,
+    num_horizontal_chunks: int = 1,
+    num_vertical_chunks: int = 3,
+) -> list[dict]:
+    """
+    Slice a full-page screenshot into a grid of overlapping UI region chunks.
+    Default: 3 vertical slices (header/hero, content/products, footer/checkout)
+    with 10% overlap to avoid cutting elements at boundaries.
+
+    Args:
+        image_path: Path to the full screenshot.
+        output_dir: Directory to save chunks. Defaults to same dir as source.
+        num_horizontal_chunks: Number of horizontal splits (usually 1).
+        num_vertical_chunks: Number of vertical splits (3 = header/body/footer).
+
+    Returns:
+        List of dicts: [{"region": "top", "path": "/abs/path.png", "bbox": (x,y,w,h)}, ...]
+    """
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Screenshot not found: {image_path}")
+
+    if output_dir is None:
+        out_dir = path.parent / "chunks"
+    else:
+        out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    region_labels = ["top_header", "middle_content", "bottom_footer"]
+    if num_vertical_chunks == 4:
+        region_labels = ["header", "hero", "products", "footer"]
+    elif num_vertical_chunks == 2:
+        region_labels = ["upper_half", "lower_half"]
+
+    with Image.open(path) as img:
+        img = img.convert("RGB")
+        w, h = img.size
+
+        overlap_ratio = 0.10  # 10% overlap between adjacent chunks
+        chunk_h = h / num_vertical_chunks
+        overlap_px = int(chunk_h * overlap_ratio)
+
+        chunks = []
+        for i in range(num_vertical_chunks):
+            y_start = max(0, int(i * chunk_h) - (overlap_px if i > 0 else 0))
+            y_end = min(h, int((i + 1) * chunk_h) + (overlap_px if i < num_vertical_chunks - 1 else 0))
+
+            cropped = img.crop((0, y_start, w, y_end))
+
+            label = region_labels[i] if i < len(region_labels) else f"region_{i}"
+            chunk_filename = f"{path.stem}_chunk_{label}.png"
+            chunk_path = out_dir / chunk_filename
+            cropped.save(chunk_path, format="PNG", optimize=True)
+
+            chunks.append({
+                "region": label,
+                "path": str(chunk_path.absolute()),
+                "bbox": (0, y_start, w, y_end - y_start),
+            })
+            logger.debug("  Chunk [%s]: y=%d-%d (%dpx)", label, y_start, y_end, y_end - y_start)
+
+    logger.info("🔪 Chunked %s into %d regions → %s", path.name, len(chunks), out_dir)
+    return chunks
+
+
+def crop_around_bounding_box(
+    image_path: str,
+    bbox: dict,
+    padding: int = 30,
+    output_path: Optional[str] = None,
+) -> str:
+    """
+    Crop a tight region around a detected bug's bounding box with padding.
+    This lets the VLM re-inspect a specific anomalous component at full resolution.
+
+    Args:
+        image_path: Path to the full screenshot.
+        bbox: Dict with keys {"x", "y", "width", "height"} or {"ymin", "xmin", "ymax", "xmax"}.
+        padding: Extra pixels around the bounding box.
+        output_path: Optional output path. Auto-generated if None.
+
+    Returns:
+        Absolute path to the cropped image.
+    """
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Screenshot not found: {image_path}")
+
+    with Image.open(path) as img:
+        img = img.convert("RGB")
+        iw, ih = img.size
+
+        # Normalize bbox format
+        if "xmin" in bbox:
+            left = bbox["xmin"]
+            top = bbox["ymin"]
+            right = bbox["xmax"]
+            bottom = bbox["ymax"]
+        else:
+            left = bbox.get("x", 0)
+            top = bbox.get("y", 0)
+            right = left + bbox.get("width", iw)
+            bottom = top + bbox.get("height", ih)
+
+        # Apply padding and clamp to image bounds
+        left = max(0, int(left) - padding)
+        top = max(0, int(top) - padding)
+        right = min(iw, int(right) + padding)
+        bottom = min(ih, int(bottom) + padding)
+
+        cropped = img.crop((left, top, right, bottom))
+
+        if output_path is None:
+            crop_hash = hashlib.md5(f"{left}{top}{right}{bottom}".encode()).hexdigest()[:8]
+            output_path = str(path.parent / f"{path.stem}_crop_{crop_hash}.png")
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        cropped.save(output_path, format="PNG", optimize=True)
+
+    logger.info("✂️  Cropped bbox (%d,%d,%d,%d) +%dpx padding → %s", left, top, right, bottom, padding, output_path)
+    return output_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HTML + CSS source fetcher
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -120,6 +120,7 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 # Static files for screenshots and mock app
+app.mount("/output", StaticFiles(directory="output"), name="output")
 app.mount("/static", StaticFiles(directory="output"), name="static")
 app.mount("/mock-app", NoCacheStaticFiles(directory="mock-app"), name="mock-app")
 
