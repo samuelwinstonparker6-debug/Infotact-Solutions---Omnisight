@@ -622,10 +622,10 @@ function App() {
     if (scanning) {
       intervalId = setInterval(() => {
         fetchRuns();
-        if (selectedRun) {
-          viewRunDetails(selectedRun);
+        if (selectedRun && selectedRun !== "design" && selectedRun !== "settings") {
+          viewRunDetails(selectedRun, false); // forceWipe = false: rock-solid non-flickering background poll
         }
-      }, 1500);
+      }, 2000);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
@@ -678,6 +678,16 @@ function App() {
 
       if (res.ok && data.run_id) {
         setSelectedRun(data.run_id);
+        // Pre-initialize stable run shell so screen never flashes blank or strobes
+        setRunDetails({
+          id: data.run_id,
+          run_id: data.run_id,
+          url: finalUrl,
+          status: "RUNNING",
+          total_bugs: 0,
+          started_at: new Date().toISOString(),
+          bugs: [],
+        });
         fetchRuns();
       } else {
         alert(`Failed to start scan: ${data.detail || data.message || "Unknown server error"}`);
@@ -730,15 +740,32 @@ function App() {
     }
   };
 
-  const viewRunDetails = async (runId, currentSelected) => {
-    if (currentSelected !== runId) {
+  const viewRunDetails = async (runId, forceWipe = false) => {
+    if (forceWipe) {
       setRunDetails(null);
     }
     setSelectedRun(runId);
     try {
       const res = await fetch(`${API_BASE}/runs/${runId}`);
+      if (!res.ok) return;
       const data = await res.json();
-      setRunDetails(data);
+      
+      // Smooth non-destructive state update: prevents blinking/fluctuations during active polling
+      setRunDetails((prev) => {
+        if (!prev) return data;
+        if (
+          prev.id === data.id &&
+          prev.status === data.status &&
+          prev.total_bugs === data.total_bugs &&
+          (prev.bugs?.length || 0) === (data.bugs?.length || 0) &&
+          prev.pr_url === data.pr_url &&
+          prev.duration_seconds === data.duration_seconds
+        ) {
+          return prev; // Same reference -> Zero DOM re-renders or flickering
+        }
+        return data;
+      });
+
       if (data && (data.status === "COMPLETED" || data.status === "completed")) {
         fetchAndSetNotepadContent(runId);
       } else if (data?.metadata?.stage) {
@@ -1281,7 +1308,7 @@ function App() {
 
             {/* Right Column: Run Details */}
             <div
-              className="glass-panel card animate-fade-in delay-200"
+              className="glass-panel card"
               style={{ gridColumn: "span 2", minHeight: "500px" }}
             >
               {!selectedRun ? (
