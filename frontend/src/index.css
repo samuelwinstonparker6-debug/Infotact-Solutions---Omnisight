@@ -579,4 +579,66 @@ pre {
   box-shadow: 0 0 25px rgba(99, 102, 241, 0.5) !important;
 }
 
+/* Dashboard Empty-State AI Greeting Stage */
+.greeting-stage {
+  position: sticky;
+  top: 2rem;
+  min-height: 450px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 2rem;
+  gap: 1.1rem;
+  animation: fadeIn 0.45s ease-out forwards;
+}
+
+.greeting-orb {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(6, 182, 212, 0.18));
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #38bdf8;
+  box-shadow: 0 0 28px rgba(99, 102, 241, 0.25), inset 0 0 12px rgba(34, 211, 238, 0.15);
+  margin-bottom: 0.25rem;
+}
+
+.greeting-heading {
+  font-size: clamp(1.65rem, 2.4vw, 2.15rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  max-width: 560px;
+  background: linear-gradient(135deg, #f8fafc 0%, #cbd5e1 45%, #38bdf8 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.greeting-subtitle {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  max-width: 440px;
+  line-height: 1.55;
+}
+
+[data-theme="light"] .greeting-orb {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(8, 145, 178, 0.12));
+  border-color: rgba(79, 70, 229, 0.28);
+  color: #4f46e5;
+  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.14);
+}
+
+[data-theme="light"] .greeting-heading {
+  background: linear-gradient(135deg, #0f172a 0%, #334155 50%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+
 
