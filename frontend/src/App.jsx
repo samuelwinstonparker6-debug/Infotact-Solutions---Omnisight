@@ -24,6 +24,7 @@ import {
   X,
   AlertCircle,
   Wand2,
+  Sparkles,
 } from "lucide-react";
 import "./index.css";
 import DesignStudio from "./DesignStudio";
@@ -301,7 +302,26 @@ function VisualDiffSlider({ beforeUrl, afterUrl, bug }) {
   );
 }
 
+const DASHBOARD_GREETINGS = [
+  "Let's make every pixel count.",
+  "Back at it. What are we polishing?",
+  "Fresh canvas, sharp eyes — let's dive in.",
+  "Standing by for a closer look.",
+  "Which interface deserves a tune-up?",
+];
+
+function shuffleGreetings(list) {
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function App() {
+  const [shuffledGreetings] = useState(() => shuffleGreetings(DASHBOARD_GREETINGS));
+  const activeGreeting = shuffledGreetings[0];
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -1309,19 +1329,19 @@ function App() {
             {/* Right Column: Run Details */}
             <div
               className="glass-panel card"
-              style={{ gridColumn: "span 2", minHeight: "500px" }}
+              style={{ gridColumn: "span 2", minHeight: "500px", ...(!selectedRun ? { overflow: "visible" } : {}) }}
             >
               {!selectedRun ? (
-                <div
-                  style={{
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  Select a scan from the left to view details
+                <div className="greeting-stage">
+                  <div className="greeting-orb">
+                    <Sparkles size={24} />
+                  </div>
+                  <h2 className="greeting-heading">
+                    {activeGreeting}
+                  </h2>
+                  <p className="greeting-subtitle">
+                    Select a scan from the left panel to inspect findings, or enter a target URL above to launch a fresh audit.
+                  </p>
                 </div>
               ) : (
                 <div
