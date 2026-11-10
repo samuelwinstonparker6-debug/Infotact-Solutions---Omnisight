@@ -14,5 +14,11 @@ check_models.py
 check.py
 scratch_test_injected.py
 test_vlm*.py
+test_flash.py
+fix_db.py
+update_db.py
+db_dump.txt
+sourcecode.txt
 test.txt
+
 
