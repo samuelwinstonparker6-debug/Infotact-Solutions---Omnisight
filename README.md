@@ -1,53 +1,40 @@
 # OmniSight
 
-**Multimodal UI Self-Healing & RPA Agent**
+**Multimodal UI Self-Healing & Autonomous RPA Agent**
 
-OmniSight is an intelligent agent designed to automatically scan web applications, detect visual and layout bugs using Vision-Language Models (VLMs), generate code fixes, and submit Pull Requests directly to your repository.
+OmniSight is an intelligent QA & Robotic Process Automation (RPA) agent built during the Infotact Solutions Generative AI internship. It automatically renders live web applications across viewports, detects visual and layout bugs using Vision-Language Models (Google Gemini), generates AST-verified CSS/Tailwind patches, re-verifies fixes in-browser, and submits GitHub Pull Requests with Before/After visual proof.
 
-## Architecture
+## Core Modules ("Main Organs")
 
-![Architecture](docs/architecture.md)
+1. **Headless Navigator (`backend/services/browser/`)**: Uses Python Playwright to visit target URLs and capture screenshots across Desktop (`1920x1080`), Tablet (`768x1024`), and Mobile (`375x812`) viewports.
+2. **VLM Analyzer & Code Fixer (`backend/services/vlm/`)**: Performs unified multimodal inspection (screenshots + HTML/CSS) using Google Gemini and generates surgical Tailwind CSS diffs and `tinycss2` AST-sanitized CSS overrides.
+3. **Agentic Orchestrator (`backend/services/agent/`)**: Runs the self-healing loop (inject CSS in live DOM -> capture verification screenshot -> confirm resolution) plus the Design Studio prompt interpreter.
+4. **CI/CD Gateway & GitHub PR Engine (`backend/api/`, `backend/services/github/`)**: FastAPI server with SQLite run history, CI/CD webhook handlers, and PyGithub automated branching/PR submission.
+5. **Executive React Dashboard (`frontend/`)**: Includes Recent Scans, Interactive Before/After Visual Diff Slider, Bounding Box Overlays, AI Design Studio, Live Site Preview, Notepad/ZIP export, and Dynamic VLM Settings.
 
-1. **Browser Automation**: Uses Playwright to navigate to target URLs and capture full-page screenshots across multiple viewports (desktop, tablet, mobile).
-2. **VLM Analysis**: Sends screenshots to a Vision-Language Model (like Gemini) to detect layout bugs, contrast issues, overlapping elements, and accessibility violations.
-3. **Agent Orchestrator**: Uses a LangChain-based ReAct agent to orchestrate the pipeline and generate CSS/HTML fixes based on the VLM's analysis.
-4. **GitHub PR Creator**: Commits the generated fixes to a new branch and automatically opens a Pull Request on the target repository.
+## Infotact Solutions Week 1–4 Schedule
 
-## Project Structure
-
-- `backend/`: FastAPI server for triggering scans and viewing results.
-  - `services/browser/`: Playwright automation.
-  - `services/vlm/`: Gemini Vision integration.
-  - `services/agent/`: LangChain orchestration.
-  - `services/github/`: PyGithub PR integration.
-- `mock-app/`: A sample e-commerce application with deliberate UI bugs for testing the agent.
-- `frontend/`: Premium React/Vite dashboard with real-time scan polling and visual PR preview.
-- `tests/`: Unit and integration test suite.
+- **Week 1 (Foundation & Automation)**: Playwright responsive screenshot capture + FastAPI CI/CD webhook scaffolding + SQLite persistence.
+- **Week 2 (Multimodal Prompting & Action Engine)**: Gemini Vision prompt engineering + Python fix parser & Mid-Project Vision Audit.
+- **Week 3 (Self-Healing Loop & GitHub Integration)**: In-memory live DOM CSS injection + visual re-verification + PyGithub automated PR creation.
+- **Week 4 (Optimization & Polish)**: UI Region Image Chunking (`chunk_screenshot_into_regions`), React approval dashboard, AI Design Studio, and vision benchmark evaluation.
 
 ## Setup Instructions
 
-1. Clone the repository.
-2. Ensure you have Python 3.10+ installed.
-3. Install dependencies:
+1. Ensure **Python 3.10+** and **Node.js 18+** are installed.
+2. Install backend dependencies and Playwright Chromium:
    ```bash
    pip install -r requirements.txt
+   playwright install chromium
    ```
-4. Copy the environment variables template and configure your keys:
+3. Copy `.env.example` to `.env` and add `GEMINI_API_KEY` and `GITHUB_TOKEN`.
+4. Start the backend server:
    ```bash
-   cp .env.example .env
+   python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
    ```
-   Add your `GEMINI_API_KEY` and `GITHUB_TOKEN` to the `.env` file.
-5. Start the development server:
+5. Start the React dashboard (`http://127.0.0.1:5173`):
    ```bash
-   python scripts/start_dev.py
+   cd frontend
+   npm install
+   npm run dev
    ```
-
-## Development (15-Day Internship Plan)
-
-This project is being built over a 15-day internship. 
-- **Day 1**: Project structure, scaffolding, and mock target application.
-- **Day 2-3**: Browser automation & VLM integration.
-- **Day 4**: Database persistence.
-- **Day 5-6**: Agent orchestration.
-- **Day 7**: GitHub PR integration.
-- *(Remaining days detailed in project specification)*
