@@ -35,6 +35,7 @@ def validate_and_sanitize_css_ast(raw_css: str) -> str:
         import tinycss2
         rules = tinycss2.parse_stylesheet(raw_css, skip_whitespace=True, skip_comments=True)
         sanitized_rules = []
+        # Prevent global regressions by blocking generic element-level rules
         forbidden_tags = {"*", "body", "html", "p", "span", "div", "a", "button", "input", "select", "h1", "h2", "h3"}
 
         for rule in rules:
