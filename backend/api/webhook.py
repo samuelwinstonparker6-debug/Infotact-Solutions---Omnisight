@@ -1,3 +1,12 @@
+"""
+OmniSight — CI/CD & GitHub Webhook Router
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Exposes webhook endpoints for CI/CD staging triggers and native GitHub
+`pull_request` merge synchronization events with optional HMAC-SHA256
+signature validation.
+"""
+
 import hmac
 import hashlib
 import logging
@@ -13,6 +22,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhook", tags=["ci-cd"])
 
 class CICDTriggerPayload(BaseModel):
+    """Payload accepted by the CI/CD webhook trigger endpoint."""
+
     repository: str
     branch: str
     commit_sha: str
@@ -20,6 +31,7 @@ class CICDTriggerPayload(BaseModel):
     environment: Optional[str] = "staging"
 
 async def verify_github_signature(request: Request, signature: str, secret: str) -> None:
+    """Validate X-Hub-Signature-256 HMAC digest against the configured secret."""
     body = await request.body()
     hash_object = hmac.new(secret.encode("utf-8"), msg=body, digestmod=hashlib.sha256)
     expected_signature = "sha256=" + hash_object.hexdigest()
