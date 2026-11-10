@@ -65,12 +65,12 @@ class Settings(BaseSettings):
 
     @property
     def is_gemini_configured(self) -> bool:
-        """Check if Gemini API key is set."""
+        """Return True when a non-empty Gemini API key is configured."""
         return bool(self.gemini_api_key)
 
     @property
     def is_github_configured(self) -> bool:
-        """Check if GitHub token is set."""
+        """Return True when a non-placeholder GitHub token is configured."""
         return bool(
             self.github_token
             and self.github_token != "ghp_your-github-token-here"
